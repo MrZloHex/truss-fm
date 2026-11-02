@@ -8,7 +8,9 @@ USE <modular.pl>
 USE <look.pl>
 
 !USES <app.pl>
+!USES <panes.pl>
 
+!USES <viewer.pl>
 
 CONST @CONST C1 TABS{} = [ "[1] logs" | "[2] dotfiles" | "[3] downloads" ]
 
@@ -59,31 +61,6 @@ ABYSS subtop_bar: [ @Ui ui | @App a ]
  | (ui.close)[]
  \_
 
-ABYSS places_pane: [ @Ui ui | @App a ]
- | (ui.box)[ "PLACES" | (pct)[15] | GROW ]
- |  
- | (ui.close)[]
- |
- \_
-
-ABYSS root_pane: [ @Ui ui | @App a ]
- | (ui.box)[ "QWE" | (pct)[20] | GROW ]
- | 
- | (ui.close)[]
- \_
-
-ABYSS main_pane: [ @Ui ui | @App a ]
- | (ui.box)[ "MAIN" | GROW | GROW ]
- | 
- | (ui.close)[]
- \_
-
-ABYSS preview_pane: [ @Ui ui | @App a ]
- | (ui.box)[ "Preview" | (pct)[20] | GROW ]
- | 
- | (ui.close)[]
- \_
-
 ABYSS tasks_bar: [ @Ui ui | @App a ]
  | (ui.box)[ "TASKS" | GROW | 3 ]
  | (ui.close)[]
@@ -106,8 +83,8 @@ B1 frame: [ @Ui ui | @App a ]
  | (subtop_bar)[ ui | a ]
  | @Node body = (ui.row)[ GROW | GROW ]
 
- | (places_pane)[ ui | a ]
- | (root_pane)[ ui | a ]
+ | (places_pane)[ ui | @(a.places) ]
+ | (root_pane)[ ui | @(a.root) | a.cwd ] 
  | (main_pane)[ ui | a ]
  | (preview_pane)[ ui | a ]
  

@@ -123,15 +123,10 @@ String get_shorter_path: [ @CONST C1 cwd ]
  | RET [ s ]
  \_
 
-;         size_t len = strlen(home);
-; 
-;         if (strncmp(path, home, len) == 0 &&
-;             (path[len] == '/' || path[len] == '\0'))
-;         {
-;             printf("~%s\n", path + len);
-;             return;
-;         }
-;     }
-; 
-;     printf("%s\n", path);
-; }
+String get_dirname: [ @CONST C1 path ]
+ | Split s = (Split.over)[ path | '/' ]
+ | Span<C1> field
+ | WHILE [ (s.next_span)[ @field ] ]
+ |  \_
+ | RET [ (String.of_span)[field] ]
+ \_

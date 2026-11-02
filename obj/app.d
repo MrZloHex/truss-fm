@@ -12,7 +12,15 @@ obj/app.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/core/span.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/fmt.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/utf8.pl \
-  src/fs.pl \
+  src/panes.pl \
+  /home/mzh/Projects/PLUM/modular/lib/modular.pl \
+  /home/mzh/Projects/PLUM/modular/lib/core/colors.pl \
+  /home/mzh/Projects/PLUM/modular/lib/core/geometry.pl \
+  /home/mzh/Projects/PLUM/modular/lib/core/utf8.pl \
+  /home/mzh/Projects/PLUM/modular/lib/core/math.pl \
+  /home/mzh/Projects/PLUM/modular/lib/core/base64.pl \
+  /home/mzh/Projects/PLUM/modular/lib/display/canvas.pl \
+  /home/mzh/Projects/PLUM/modular/lib/display/image.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/result.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/ring.pl \
@@ -30,16 +38,57 @@ obj/app.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/io/source.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/file.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/text.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
+  /home/mzh/Projects/PLUM/modular/lib/audio/sound.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/vector.pl \
+  /home/mzh/Projects/PLUM/modular/lib/input/event.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/node.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/ui.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/ui_data.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/arena.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/layout.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/widgets.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/textedit.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/controls.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/charts.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/menus.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/files.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/code.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/extras.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/kit.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/sounds.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/renderer.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/plot.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/unistd.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/signal.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/errno.pl \
+  /home/mzh/Projects/PLUM/modular/lib/audio/mixer.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/pthread.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/poll.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/gui/render.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/gui/xlib.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/web/render.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/web/page.pl \
+  /home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl \
+  /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
+  /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl \
+  src/look.pl \
+  src/fs.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/path.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl
+  /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
+  src/viewer.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl:
 
@@ -65,7 +114,23 @@ obj/app.o: \
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/utf8.pl:
 
-src/fs.pl:
+src/panes.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/modular.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/core/colors.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/core/geometry.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/core/utf8.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/core/math.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/core/base64.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/display/canvas.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/display/image.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -101,17 +166,97 @@ src/fs.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/io/text.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
+/home/mzh/Projects/PLUM/modular/lib/audio/sound.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/vector.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
+/home/mzh/Projects/PLUM/modular/lib/input/event.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/node.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/ui.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/ui_data.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/arena.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/layout.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/widgets.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/textedit.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/controls.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/charts.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl:
+/home/mzh/Projects/PLUM/modular/lib/ui/menus.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/files.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/code.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/extras.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/kit.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/sounds.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/renderer.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/plot.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/unistd.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/signal.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/errno.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/audio/mixer.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/pthread.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/poll.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/gui/render.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/gui/xlib.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/web/render.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/web/page.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/extern/socket.pl:
+
+/home/mzh/Projects/PLUM/modular/lib/ui/app.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
+
+src/look.pl:
+
+src/fs.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/path.pl:
 
@@ -120,3 +265,5 @@ src/fs.pl:
 /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
+
+src/viewer.pl:

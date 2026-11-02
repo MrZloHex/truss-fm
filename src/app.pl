@@ -1,7 +1,9 @@
 
 USE <std/alloc/string.pl>
 
+!USES <panes.pl>
 !USES <fs.pl>
+!USES <viewer.pl>
 
 TYPE Partition: STRUCT
  | String name
@@ -12,6 +14,9 @@ TYPE Partition: STRUCT
 TYPE AppData: STRUCT
  | U32 tab
  |
+ | PlacesPane places 
+ | RootPane   root
+
  | String cwd
  | String rel_cwd
  | Partition partition
