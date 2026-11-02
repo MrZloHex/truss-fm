@@ -12,20 +12,26 @@ TYPE Partition: STRUCT
 TYPE AppData: STRUCT
  | U32 tab
  |
+ | String cwd
+ | String rel_cwd
  | Partition partition
  \_
 
 IFACE AppOps: [ @AppData me ]
  | ABYSS dispose: []
  |  | (me.partition.name.deinit)[]
+ |  | (me.cwd.deinit)[]
+ |  | (me.rel_cwd.deinit)[]
  |  \_
  | 
  + ANONYMOUS:
- | Self make: [ @CONST C1 cwd ]
+ | Self make: [ String cwd ]
  |  | Self s
- |  | s.partition.name  = ((get_phy_part_name)[ cwd ].unwrap)[]
- |  | s.partition.usage = ((get_phy_part_usage)[ cwd ].unwrap)[]
- |  | s.partition.free  = ((get_phy_part_free)[ cwd ].unwrap)[]
+ |  | s.cwd = cwd
+ |  | s.rel_cwd = (get_shorter_path)[ (cwd.cstr)[] ]
+ |  | s.partition.name  = ((get_phy_part_name)[ (cwd.cstr)[] ].unwrap)[]
+ |  | s.partition.usage = ((get_phy_part_usage)[ (cwd.cstr)[] ].unwrap)[]
+ |  | s.partition.free  = ((get_phy_part_free)[ (cwd.cstr)[] ].unwrap)[]
  |  | RET [ s ]
  |  \_
  \_

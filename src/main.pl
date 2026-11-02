@@ -48,7 +48,8 @@ ABYSS subtop_bar: [ @Ui ui | @App a ]
  | (bar.spacing)[ 1 ]
  | (ui.space)[ 1 | 1 ]
  |  (ui.text)[ FIT | 1 ] 
- |   (ui.put)[ (fg)[AMBER] | ">" ]
+ |   (ui.put)[ (fg)[AMBER] | "> " ]
+ |   (ui.put)[ (fg)[TEXT]  | (a.rel_cwd.cstr)[] ]
  |  (ui.space)[ 4 | 1 ]
  |
  | @Node right = (ui.text)[ GROW | 1 ]
@@ -65,6 +66,39 @@ ABYSS places_pane: [ @Ui ui | @App a ]
  |
  \_
 
+ABYSS root_pane: [ @Ui ui | @App a ]
+ | (ui.box)[ "QWE" | (pct)[20] | GROW ]
+ | 
+ | (ui.close)[]
+ \_
+
+ABYSS main_pane: [ @Ui ui | @App a ]
+ | (ui.box)[ "MAIN" | GROW | GROW ]
+ | 
+ | (ui.close)[]
+ \_
+
+ABYSS preview_pane: [ @Ui ui | @App a ]
+ | (ui.box)[ "Preview" | (pct)[20] | GROW ]
+ | 
+ | (ui.close)[]
+ \_
+
+ABYSS tasks_bar: [ @Ui ui | @App a ]
+ | (ui.box)[ "TASKS" | GROW | 3 ]
+ | (ui.close)[]
+ \_
+
+ABYSS hotkeys: [ @Ui ui | @App a ]
+ | (ui.text)[ GROW | 1 ]
+ | (ui.put)[ (fg)[ AMBER ] | " [hjkl]" ]
+ | (ui.put)[ (fg)[ TEXT ] | " move   " ]
+ | (ui.put)[ (fg)[ AMBER ] | "[space]" ]
+ | (ui.put)[ (fg)[ TEXT ] | " mark   " ]
+ | (ui.put)[ (fg)[ AMBER ] | "[q]" ]
+ | (ui.put)[ (fg)[ TEXT ] | " quit" ]
+ \_
+
 B1 frame: [ @Ui ui | @App a ]
  | 
  | (ui.column)[ GROW | GROW ]
@@ -73,8 +107,14 @@ B1 frame: [ @Ui ui | @App a ]
  | @Node body = (ui.row)[ GROW | GROW ]
 
  | (places_pane)[ ui | a ]
+ | (root_pane)[ ui | a ]
+ | (main_pane)[ ui | a ]
+ | (preview_pane)[ ui | a ]
  
  | (ui.close)[]
+
+ | (tasks_bar)[ ui | a ]
+ | (hotkeys)[ ui | a ]
  | (ui.close)[]
  |
 
@@ -85,15 +125,23 @@ I32 main: [ I32 argc | @@C1 argv ]
  | (stdout.print)[ "PROLIFE\n" ]
  | Args args = (Args.over)[ argc | argv ]
 
- | @CONST C1 cwd = "."
+ | @CONST C1 path = "."
  | IF [ (args.size)[] > 1 ]
- |  | cwd = (args.get)[ 1 ]
+ |  | path = (args.get)[ 1 ]
  |  \_
  | 
+ | Result<String | IoError> r_cwd = (get_realpath)[ path ]
+ | IF [ (r_cwd.is_err)[] ]
+ |  | RET [ -1 ]
+ |  \_
+ 
  | 
  |
- | App a = (App.make)[ cwd ]
+ | App a = (App.make)[ (r_cwd.unwrap)[] ]
  | POSTLUDE (a.dispose)[]
+ |
+ | (stdout.print)[ "Current path `%s`\n" | (a.cwd.cstr)[] ]
+ | (stdout.print)[ "Relative path `%s`\n" | (a.rel_cwd.cstr)[] ]
 
  | AppConfig cfg = [ .title = "PLUF" | .focus = "tasks" | .theme = (app_theme)[] ]
  | (app_run<App>)[ @cfg | argc | argv | frame | @a ]

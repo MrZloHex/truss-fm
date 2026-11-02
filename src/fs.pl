@@ -105,3 +105,33 @@ Option<F64> get_phy_part_free: [ @CONST C1 cwd ]
  | FsSpace s = (room.unwrap)[]
  | RET [ (Option<F64>.some)[(s.available AS F64) / GIB] ]
  \_
+
+
+Result<String | IoError> get_realpath: [ @CONST C1 cwd ]
+ | C1 full{4096}
+ | Result<USIZE | IoError> r = (fs_real)[ full | 4096 | cwd ]
+ | IF [ (r.is_err)[] ]
+ |  | RET [ (Result<String | IoError>.err)[ (r.error)[] ] ]
+ |  \_
+ | RET [ (Result<String | IoError>.ok)[ (String.of)[full] ] ]
+ \_
+
+String get_shorter_path: [ @CONST C1 cwd ]
+ | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
+ | String s = (String.of)[cwd]
+ | (s.replace)[ home | "~" ]
+ | RET [ s ]
+ \_
+
+;         size_t len = strlen(home);
+; 
+;         if (strncmp(path, home, len) == 0 &&
+;             (path[len] == '/' || path[len] == '\0'))
+;         {
+;             printf("~%s\n", path + len);
+;             return;
+;         }
+;     }
+; 
+;     printf("%s\n", path);
+; }
