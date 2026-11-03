@@ -89,7 +89,6 @@ obj/main.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
   src/look.pl \
   src/app.pl \
-  src/panes.pl \
   src/fs.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
@@ -97,7 +96,11 @@ obj/main.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
-  src/viewer.pl
+  src/ui/places.pl \
+  src/ui/root.pl \
+  src/ui/common.pl \
+  src/ui/main.pl \
+  src/ui/preview.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
 
@@ -277,8 +280,6 @@ src/look.pl:
 
 src/app.pl:
 
-src/panes.pl:
-
 src/fs.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
@@ -293,4 +294,12 @@ src/fs.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
 
-src/viewer.pl:
+src/ui/places.pl:
+
+src/ui/root.pl:
+
+src/ui/common.pl:
+
+src/ui/main.pl:
+
+src/ui/preview.pl:

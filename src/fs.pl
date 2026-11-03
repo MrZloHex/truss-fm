@@ -7,6 +7,7 @@ USE <std/os/os.pl>
 CONST USIZE WORD = 512
 CONST F64 GB = 1e9             ; as disks are sold
 CONST F64 GIB = 1073741824.0   ; 2^30, as df -h counts
+CONST @CONST C1 MONTHS{} = [ "Jan" | "Feb" | "Mar" | "Apr" | "May" | "Jun" | "Jul" | "Aug" | "Sep" | "Oct" | "Nov" | "Dec" ]
 
 LOCAL @CONST C1 field: [ @CONST C1 s | @C1 out ]
  | USIZE n = 0
@@ -129,4 +130,32 @@ String get_dirname: [ @CONST C1 path ]
  | WHILE [ (s.next_span)[ @field ] ]
  |  \_
  | RET [ (String.of_span)[field] ]
+ \_
+
+; the folder around `path`, which is absolute; / is its own
+String get_parent_path: [ @CONST C1 path ]
+ | String s = (String.of)[ path ]
+ | USIZE cut = 0
+ | FOR [ USIZE i = 0 | path{i} != '\0' | i += 1 ]
+ |  | IF [ path{i} == '/' ]
+ |  |  | cut = i
+ |  |  \_
+ |  \_
+ | (s.truncate)[ SELECT [ cut > 0 | cut | 1 ] ]
+ | RET [ s ]
+ \_
+
+; a size for a narrow column: 512B, 6K, 3.1M
+ABYSS size_text: [ @C1 out | U64 n ]
+ | BufferSink b = (BufferSink.over)[ out | 16 ]
+ | F64 v = n AS F64
+ | IF [ n < 1024 ]
+ |  | (b.print)[ "%uB" | n AS U32 ]
+ | ELIF [ n < 1024 * 1024 ]
+ |  | (b.print)[ "%.0fK" | v / 1024.0 ]
+ | ELIF [ n < 1024 * 1024 * 1024 ]
+ |  | (b.print)[ "%.1fM" | v / 1048576.0 ]
+ | ELSE
+ |  | (b.print)[ "%.1fG" | v / GIB ]
+ |  \_
  \_

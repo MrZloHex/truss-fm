@@ -1,5 +1,5 @@
-obj/viewer.o: \
-  src/viewer.pl \
+obj/ui/main.o: \
+  src/ui/main.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/option.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/bits.pl \
@@ -85,10 +85,9 @@ obj/viewer.o: \
   /home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
-  src/app.pl \
-  src/panes.pl \
-  src/look.pl \
-  src/fs.pl
+  src/ui/common.pl \
+  src/fs.pl \
+  src/look.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -260,10 +259,8 @@ obj/viewer.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/ui/app.pl:
 
-src/app.pl:
-
-src/panes.pl:
-
-src/look.pl:
+src/ui/common.pl:
 
 src/fs.pl:
+
+src/look.pl:

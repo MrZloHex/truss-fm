@@ -5,7 +5,8 @@ PLCFLAGS ?= -O2 -g
 LDLIBS   ?= -lm -lX11 -lXft -lXrender -lpthread
 STD       = $(shell $(PLC) --print-std)
 LIBMOD    = $(MODULAR)/build/libmodular.a
-SRC       = $(wildcard src/*.pl)
+# every .pl under src/, at any depth; obj/ mirrors its folders
+SRC       = $(shell find src -name '*.pl' -not -path '*/.*' | sort)
 OBJ       = $(SRC:src/%.pl=obj/%.o)
 # what the tests link: everything but main, which they have their own of
 LIB_OBJ   = $(filter-out obj/main.o,$(OBJ))
