@@ -6,7 +6,8 @@
 # skipped.
 #
 # Bookmarks are a file of their own, ~/.config/pluf/places, in the same
-# form as place = below; b adds the folder you are in.
+# form as place = below; b adds the folder you are in, and D on one in the
+# places column takes it off again.
 
 # --- files ----------------------------------------------------------------------
 
@@ -48,11 +49,14 @@ places.devices = true       # the DEVICES section
 # --- opening files ----------------------------------------------------------------
 
 # Enter, l or → on a file opens it (with V: all the chosen files, together);
-# o asks with what first, the program it would be filled in to change.
+# o offers every program whose line fits, then xdg-open: 1 to 9 picks one,
+# e types a command of your own.
 #
 # open.<ext>[,<ext>...] = [term:] command
-#   The first line with the file's extension wins, then open.*, then
-#   xdg-open. term: -- a program that wants the terminal (an editor, a
+#   The first line that fits wins, then open.*, then xdg-open. A line fits
+#   by the file's extension -- or, with a / in it, by its MIME type, as
+#   `file --mime-type` says: open.video/* = mpv, open.text/* = ... -- so a
+#   README with no extension still finds its editor. term: -- a program that wants the terminal (an editor, a
 #   pager): pluf steps aside till it ends; in a window (--gui) it opens in
 #   $TERMINAL, or xterm. Any other runs in the background and is left to
 #   run. The command goes to sh, so $EDITOR and the like work; %f is where
@@ -63,7 +67,39 @@ open.pdf,djvu,epub = zathura
 open.png,jpg,jpeg,gif,webp,bmp = imv
 open.mp4,mkv,webm,avi,mp3,flac,ogg,opus = mpv
 open.html = firefox
+open.text/* = term: ${EDITOR:-vi}
+open.video/*,audio/* = mpv
 # open.* = xdg-open
+
+# --- the preview --------------------------------------------------------------------
+
+# preview.<ext>[,<ext>...] = [image:] command
+#   What the command prints is shown in the preview, colours and all (so
+#   bat's highlighting shows). image: -- what it prints is a picture, PNG or
+#   PPM. It runs beside pluf, never holding it still, and is killed when the
+#   cursor moves on. Rules fit as open. ones do: by extension, or by MIME
+#   type (image/*), then preview.*. With none, text and PNG/QOI/PPM show as
+#   they are, and anything else as `file` describes it.
+preview.py,md,sh,c,h,rs,go,js,ts,json,toml,yaml,conf,pl = bat --color=always --style=plain --paging=never %f
+preview.jpg,jpeg,webp,gif,bmp,tiff,heic,avif = image: magick %f[0] -resize '600x600>' -depth 8 ppm:-
+preview.pdf = image: pdftoppm -png -r 40 -f 1 -l 1 %f
+preview.mp4,mkv,webm,avi,mov = image: ffmpeg -loglevel error -ss 3 -i %f -frames:v 1 -vf scale=480:-1 -f image2pipe -vcodec png -
+preview.zip,tar,gz,xz,bz2,zst,7z,iso = bsdtar -tf %f
+preview.audio/* = exiftool %f
+
+# --- unpacking -----------------------------------------------------------------------
+
+# E unpacks the archive under the cursor (or every one chosen with V) as a
+# task: always into a new folder named for it -- foo.tar.gz into foo/, or
+# foo (2)/ -- and if all it held was one folder or file, that is moved up
+# in its place. Without a rule pluf knows tar.*, zip, jar, 7z, iso, cpio,
+# deb (by bsdtar), rar (by unrar, where it is), and a lone .gz .bz2 .xz
+# .zst .lz4 file (decompressed).
+#
+# extract.<ext>[,<ext>...] = command   -- run inside the new folder, the
+# archive as %f; what it prints, a line an entry, is counted
+# extract.rar = unrar x -o- %f
+# extract.zip = unzip %f
 
 # --- tabs -------------------------------------------------------------------------
 

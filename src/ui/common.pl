@@ -173,6 +173,32 @@ ABYSS move_keys: [ @Ui ui | @ListState st ]
  |  \_
  \_
 
+; --- the mouse ------------------------------------------------------------------
+
+; the row of the list `id` the pointer is on this frame; -1: none -- not in
+; the list, or under its last row
+I32 pointer_row: [ @Ui ui | U32 id | @ListState st ]
+ | Rect r = (ui.rect_of)[ id ]
+ | IF [ !(rect_has)[ r | ui.ev.x | ui.ev.y ] ]
+ |  | RET [ -1 ]
+ |  \_
+ | I32 row = st.sc.top + ui.ev.y - r.y
+ | RET [ SELECT [ row < st.count | row | -1 ] ]
+ \_
+
+; this frame's event a press of `button` on a row of the list `id`, which
+; the list may have taken already: that row; -1: none. `clicks` 2: only a
+; double one
+I32 press_row: [ @Ui ui | U32 id | @ListState st | U32 button | I32 clicks ]
+ | IF [ ui.ev.kind != EV_MOUSE || ui.ev.button != button ]
+ |  | RET [ -1 ]
+ |  \_
+ | IF [ clicks > 1 && ui.ev.clicks != clicks ]
+ |  | RET [ -1 ]
+ |  \_
+ | RET [ (pointer_row)[ ui | id | st ] ]
+ \_
+
 I32 go_keys: [ @Ui ui ]
  | IF [ (ui.take)[ 'l' AS U32 ] || (ui.take)[ KEY_RIGHT ] || (ui.take)[ KEY_ENTER ] ]
  |  | RET [ GO_IN ]

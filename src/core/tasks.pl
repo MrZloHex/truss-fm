@@ -13,6 +13,9 @@ USE <std/os/os.pl>
 USE <std/os/time.pl>
 
 !USES <fs.pl>
+!USES <sys.pl>
+!USES <job.pl>
+!USES <extract.pl>
 
 CONST U64 TASK_SLICE_MS = 12    ; the work done in one frame, at most
 CONST U64 TASK_KEEP_MS = 3000   ; a task that ended is shown this long
@@ -24,30 +27,8 @@ CONST I32 E_INTR = 4            ; a call a signal broke off: made again
 CONST I32 AT_FDCWD = -100
 CONST ISIZE UTIME_OMIT = 1073741822     ; utimensat: this time left as it is
 
-; Linux's numbers, as std's File has them
-CONST I32 O_READ = 0x80000                  ; O_RDONLY | O_CLOEXEC
-CONST I32 O_MAKE = 0x800C1                  ; O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC
-
 LOCAL U8 copy_buf{COPY_CHUNK}
 
-ISIZE px_read: [ I32 fd | @ABYSS buf | USIZE n ]
- + SYMBOL "read"
-ISIZE px_write: [ I32 fd | @CONST ABYSS buf | USIZE n ]
- + SYMBOL "write"
-I32 px_open: [ @CONST C1 path | I32 flags | ... ]
- + SYMBOL "open"
-I32 px_close: [ I32 fd ]
- + SYMBOL "close"
-I32 px_chmod: [ @CONST C1 path | U32 mode ]
- + SYMBOL "chmod"
-ISIZE px_readlink: [ @CONST C1 path | @C1 buf | USIZE n ]
- + SYMBOL "readlink"
-I32 px_symlink: [ @CONST C1 target | @CONST C1 path ]
- + SYMBOL "symlink"
-I32 px_utimensat: [ I32 dirfd | @CONST C1 path | @CONST Timespec times | I32 flags ]
- + SYMBOL "utimensat"
-
-; what a paste does with a name taken where it goes
 CONST I32 CLASH_KEEP = 0        ; keep both: the new one as "name (2)"
 CONST I32 CLASH_SKIP = 1        ; leave that one out
 CONST I32 CLASH_OVER = 2        ; overwrite: a file replaced, a folder merged into
@@ -56,6 +37,7 @@ TYPE TaskKind: ENUM
  | TK_COPY
  | TK_MOVE
  | TK_DELETE
+ | TK_EXTRACT       ; an archive unpacked, by a program: extract.pl
  \_
 
 TYPE StepKind: ENUM
@@ -98,6 +80,11 @@ TYPE Task: STRUCT
  | U32 src_nsec             ;   the copy once it is whole
  | U32 src_mode
  | B1 over                  ; a name taken is overwritten, not a failure
+ | Job job                  ; TK_EXTRACT: the program unpacking it
+ | B1 extracting            ;   and it at work
+ | String dest              ;   the folder it unpacks into -- or, moved up,
+ |                          ;   what that held
+ | String into              ;   the folder that folder is in
  | String replace           ; the file `target` is written aside for: renamed
  |                          ;   over it once whole; empty: none
  \_
@@ -163,6 +150,8 @@ Task task_new: [ TaskKind k ]
  | t.now = (String.of)[ "" ]
  | t.error = (String.of)[ "" ]
  | t.replace = (String.of)[ "" ]
+ | t.dest = (String.of)[ "" ]
+ | t.into = (String.of)[ "" ]
  | t.in = -1
  | t.out = -1
  | RET [ t ]
@@ -182,6 +171,10 @@ ABYSS task_free: [ @Task t ]
  | (t.now.deinit)[]
  | (t.error.deinit)[]
  | (t.replace.deinit)[]
+ | (job_stop)[ @(t.job) ]
+ | (t.job.out.deinit)[]
+ | (t.dest.deinit)[]
+ | (t.into.deinit)[]
  \_
 
 ABYSS task_title: [ @Task t | @CONST C1 verb | USIZE n | @CONST C1 one | @CONST C1 into ]
@@ -645,6 +638,14 @@ B1 tasks_run: [ @Vector<Task> ts ]
  | B1 changed = FALSE
  | FOR [ USIZE i = 0 | i < (ts.size)[] | i += 1 ]
  |  | @Task t = (ts.at)[ i ]
+ |  | ; an extraction: its program's work, not steps
+ |  | IF [ t.extracting && (task_running)[ t ] ]
+ |  |  | IF [ (extract_step)[ t ] ]
+ |  |  |  | t.ended = (now_ms)[]
+ |  |  |  \_
+ |  |  | changed = TRUE
+ |  |  | CONTINUE
+ |  |  \_
  |  | WHILE [ (task_running)[ t ] && (now_ms)[] - start < TASK_SLICE_MS ]
  |  |  | IF [ t.in < 0 && (t.steps.size)[] == 0 ]
  |  |  |  | t.ended = (now_ms)[]

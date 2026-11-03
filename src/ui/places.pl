@@ -35,6 +35,7 @@ TYPE Place: STRUCT
  | String path              ; where Enter goes; empty for a heading or a gap
  | String key               ; ' and this go here; may be empty
  | I32 used                 ; a disk's use in percent; -1: not a disk
+ | B1 mark                  ; from the bookmarks file: D there takes it off
  \_
 
 TYPE PlacesPane: STRUCT
@@ -44,6 +45,8 @@ TYPE PlacesPane: STRUCT
  | B1 jump                  ; ' was pressed: the next key names a place
  | U64 mounts               ; mounts_signature when the disks were read
  | U64 checked              ; now_ms they were last looked at
+ | String said              ; a word for the program to show: a bookmark
+ |                          ;   taken off, or why not; empty: none
  \_
 
 ; --- rows -----------------------------------------------------------------------
@@ -72,6 +75,7 @@ ABYSS places_clear: [ @Vector<Place> v ]
 ABYSS dispose_places: [ @PlacesPane p ]
  | (places_clear)[ @(p.rows) ]
  | (p.rows.deinit)[]
+ | (p.said.deinit)[]
  \_
 
 ; where the bookmarks are kept, in `out`
@@ -93,7 +97,7 @@ LOCAL I32 place_known: [ @Vector<Place> v | @CONST C1 path ]
 ; the folder `path` (~ for home) as a place, under `name` or, empty, its
 ; own; left out when it is not there. A place already there takes the key
 ; and the name given, so the config can rename or rekey a standard one
-ABYSS place_dir: [ @Vector<Place> v | @CONST C1 name | @CONST C1 path | @CONST C1 key | @CONST C1 home ]
+ABYSS place_dir: [ @Vector<Place> v | @CONST C1 name | @CONST C1 path | @CONST C1 key | @CONST C1 home | B1 mark ]
  | C1 full{PLACE_LINE}
  | BufferSink b = (BufferSink.over)[ full | PLACE_LINE ]
  | IF [ path{0} == '~' ]
@@ -122,15 +126,17 @@ ABYSS place_dir: [ @Vector<Place> v | @CONST C1 name | @CONST C1 path | @CONST C
  |  |  | (r.name.deinit)[]
  |  |  | r.name = (String.of)[ name ]
  |  |  \_
+ |  | r.mark = r.mark || mark
  |  | RET []
  |  \_
  | IF [ name{0} != '\0' ]
  |  | (place_add)[ v | PK_PLACE | name | (f.cstr)[] | key | -1 ]
- |  | RET []
+ | ELSE
+ |  | String own = (folder_name)[ (f.cstr)[] ]
+ |  | (place_add)[ v | PK_PLACE | (own.cstr)[] | (f.cstr)[] | key | -1 ]
+ |  | (own.deinit)[]
  |  \_
- | String own = (folder_name)[ (f.cstr)[] ]
- | (place_add)[ v | PK_PLACE | (own.cstr)[] | (f.cstr)[] | key | -1 ]
- | (own.deinit)[]
+ | (v.at)[ (v.size)[] - 1 ].mark = mark
  \_
 
 ; a place as the config's `place =` and the bookmarks file write it: its
@@ -138,7 +144,7 @@ ABYSS place_dir: [ @Vector<Place> v | @CONST C1 name | @CONST C1 path | @CONST C
 ; and the name
 ;   w ~/work | Work
 ;   - /mnt/archive
-ABYSS place_line: [ @Vector<Place> v | @CONST C1 text | @CONST C1 home ]
+ABYSS place_line: [ @Vector<Place> v | @CONST C1 text | @CONST C1 home | B1 mark ]
  | IF [ text{0} == '\0' || text{0} == '#' || text{1} != ' ' ]
  |  | RET []
  |  \_
@@ -159,7 +165,7 @@ ABYSS place_line: [ @Vector<Place> v | @CONST C1 text | @CONST C1 home ]
  | WHILE [ ?at == ' ' ]
  |  | at += 1
  |  \_
- | (place_dir)[ v | name | at | key AS @CONST C1 | home ]
+ | (place_dir)[ v | name | at | key AS @CONST C1 | home | mark ]
  \_
 
 ; ~/.config/pluf/places, what b writes: a place a line, as place_line has it
@@ -174,7 +180,7 @@ ABYSS bookmarks_read: [ @Vector<Place> v | @CONST C1 home ]
  | Split lines = (Split.over)[ (text.cstr)[] | '\n' ]
  | C1 line{PLACE_LINE}
  | WHILE [ (lines.next)[ line | PLACE_LINE ] ]
- |  | (place_line)[ v | line AS @CONST C1 | home ]
+ |  | (place_line)[ v | line AS @CONST C1 | home | TRUE ]
  |  \_
  \_
 
@@ -233,15 +239,15 @@ ABYSS standard_read: [ @Vector<Place> v | @CONST C1 home ]
  |  |  | (str_copy)[ path | PLACE_LINE | XDG_DEFAULT{i} ]
  |  |  \_
  |  | IF [ !((str_eq)[ path AS @CONST C1 | "~" ]) && !((str_eq)[ path AS @CONST C1 | "~/" ]) ]
- |  |  | (place_dir)[ v | "" | path AS @CONST C1 | XDG_KEY{i} | home ]
+ |  |  | (place_dir)[ v | "" | path AS @CONST C1 | XDG_KEY{i} | home | FALSE ]
  |  |  \_
  |  \_
- | (place_dir)[ v | "/ root" | "/" | "/" | home ]
+ | (place_dir)[ v | "/ root" | "/" | "/" | home | FALSE ]
  | C1 bin{PLACE_LINE}
  | (trash_home)[ bin | PLACE_LINE ]
  | BufferSink tb = (BufferSink.over)[ bin + (str_len)[ bin AS @CONST C1 ] | PLACE_LINE - (str_len)[ bin AS @CONST C1 ] ]
  | (tb.print)[ "/files" ]
- | (place_dir)[ v | "Trash" | bin AS @CONST C1 | "t" | home ]
+ | (place_dir)[ v | "Trash" | bin AS @CONST C1 | "t" | home | FALSE ]
  \_
 
 ; a disk that udisks (udiskie, a desktop) mounted: under /run/media/<user>/
@@ -279,12 +285,12 @@ ABYSS places_read: [ @PlacesPane p ]
  | (places_clear)[ @(p.rows) ]
  | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
  | (place_add)[ @(p.rows) | PK_HEAD | "PLACES" | "" | "" | -1 ]
- | (place_dir)[ @(p.rows) | "~ home" | "~" | "h" | home ]
+ | (place_dir)[ @(p.rows) | "~ home" | "~" | "h" | home | FALSE ]
  | IF [ CFG.std_places ]
  |  | (standard_read)[ @(p.rows) | home ]
  |  \_
  | FOR [ USIZE i = 0 | i < (CFG.places.size)[] | i += 1 ]
- |  | (place_line)[ @(p.rows) | ((CFG.places.at)[ i ].cstr)[] | home ]
+ |  | (place_line)[ @(p.rows) | ((CFG.places.at)[ i ].cstr)[] | home | FALSE ]
  |  \_
  | (bookmarks_read)[ @(p.rows) | home ]
  | IF [ CFG.devices ]
@@ -332,6 +338,90 @@ I32 bookmark_add: [ @PlacesPane p | @CONST C1 cwd ]
  | (text.append)[ "\n" ]
  | p.read = FALSE
  | RET [ SELECT [ ((write_file)[ file AS @CONST C1 | (text.cstr)[] ].is_ok)[] | BM_ADDED | BM_FAILED ] ]
+ \_
+
+; the bookmark at `target` -- every line of the bookmarks file whose path is
+; that folder -- taken off. How many lines went; -1: the file cannot be
+; written. The rows are read again on the next frame
+I32 bookmark_remove: [ @PlacesPane p | @CONST C1 target ]
+ | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
+ | C1 file{PLACE_LINE}
+ | (bookmarks_file)[ file | PLACE_LINE ]
+ | String text
+ | POSTLUDE (text.deinit)[]
+ | IF [ ((read_file)[ file AS @CONST C1 | @text ].is_err)[] ]
+ |  | RET [ 0 ]
+ |  \_
+ | String kept = (String.of)[ "" ]
+ | POSTLUDE (kept.deinit)[]
+ | I32 gone = 0
+ | Split lines = (Split.over)[ (text.cstr)[] | '\n' ]
+ | C1 line{PLACE_LINE}
+ | WHILE [ (lines.next)[ line | PLACE_LINE ] ]
+ |  | ; its path, as place_line reads it: after the key, before " | "
+ |  | B1 drop = FALSE
+ |  | IF [ line{0} != '\0' && line{0} != '#' && line{1} == ' ' ]
+ |  |  | C1 path{PLACE_LINE}
+ |  |  | (str_copy)[ path | PLACE_LINE | (line AS @CONST C1) + 2 ]
+ |  |  | FOR [ USIZE i = 0 | path{i} != '\0' | i += 1 ]
+ |  |  |  | IF [ path{i} == ' ' && path{i + 1} == '|' && path{i + 2} == ' ' ]
+ |  |  |  |  | path{i} = '\0'
+ |  |  |  |  | BREAK
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | @CONST C1 at = path AS @CONST C1
+ |  |  | WHILE [ ?at == ' ' ]
+ |  |  |  | at += 1
+ |  |  |  \_
+ |  |  | C1 full{PLACE_LINE}
+ |  |  | BufferSink b = (BufferSink.over)[ full | PLACE_LINE ]
+ |  |  | IF [ at{0} == '~' ]
+ |  |  |  | (b.print)[ "%s%s" | home | at + 1 ]
+ |  |  | ELSE
+ |  |  |  | (b.print)[ "%s" | at ]
+ |  |  |  \_
+ |  |  | Result<String | IoError> r = (get_realpath)[ full AS @CONST C1 ]
+ |  |  | IF [ (r.is_ok)[] ]
+ |  |  |  | String f = (r.unwrap)[]
+ |  |  |  | drop = (f.equals)[ target ]
+ |  |  |  | (f.deinit)[]
+ |  |  |  \_
+ |  |  \_
+ |  | IF [ drop ]
+ |  |  | gone += 1
+ |  | ELIF [ line{0} != '\0' ]
+ |  |  | ; the empty piece after the last line, and blank ones, not kept
+ |  |  | (kept.append)[ line AS @CONST C1 ]
+ |  |  | (kept.append)[ "\n" ]
+ |  |  \_
+ |  \_
+ | IF [ gone == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | p.read = FALSE
+ | IF [ ((write_file)[ file AS @CONST C1 | (kept.cstr)[] ].is_err)[] ]
+ |  | RET [ -1 ]
+ |  \_
+ | RET [ gone ]
+ \_
+
+; D or Delete on a place: a bookmark taken off; anything else is not the
+; bookmarks file's to lose, and `said` says so
+ABYSS place_forget: [ @PlacesPane p | @Place r ]
+ | (p.said.deinit)[]
+ | IF [ !(r.mark) ]
+ |  | p.said = (String.of)[ "not a bookmark: standard places, place = lines and disks stay" ]
+ |  | RET []
+ |  \_
+ | I32 gone = (bookmark_remove)[ p | (r.path.cstr)[] ]
+ | C1 s{300}
+ | BufferSink b = (BufferSink.over)[ s | 300 ]
+ | IF [ gone > 0 ]
+ |  | (b.print)[ "bookmark %s taken off · b puts it back" | (r.name.cstr)[] ]
+ | ELSE
+ |  | (b.print)[ "the bookmarks file cannot be written" ]
+ |  \_
+ | p.said = (String.of)[ s AS @CONST C1 ]
  \_
 
 ; --- where the program is -------------------------------------------------------
@@ -384,9 +474,11 @@ ABYSS place_skip: [ @PlacesPane p | I32 was ]
  |  \_
  \_
 
-ABYSS place_go: [ @String go | @Place r ]
+; to the place `r`, in `go`; the main column takes the keys there
+ABYSS place_go: [ @Ui ui | @String go | @Place r ]
  | (go.deinit)[]
  | ?go = (String.of)[ (r.path.cstr)[] ]
+ | (ui.set_focus)[ (ui.id)[ "main" ] ]
  \_
 
 ; ' and a place's key go there, whichever column has the focus: this one
@@ -409,7 +501,7 @@ ABYSS jump_keys: [ @Ui ui | @PlacesPane p | @String go ]
  | FOR [ USIZE i = 0 | i < (p.rows.size)[] | i += 1 ]
  |  | @Place r = (p.rows.at)[ i ]
  |  | IF [ (r.key.size)[] > 0 && ((r.key.cstr)[]{0} AS U32) == k ]
- |  |  | (place_go)[ go | r ]
+ |  |  | (place_go)[ ui | go | r ]
  |  |  | RET []
  |  |  \_
  |  \_
@@ -442,11 +534,30 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  \_
  |
  | (ui.box)[ "" | (pct)[ CFG.places_width ] | GROW ]
+ | ; on a bookmark, with the keys: how to take it off, in the bottom edge
+ | IF [ (ui.focused)[ id ] && p.list.cursor >= 0 && p.list.cursor < n && (p.rows.at)[ p.list.cursor AS USIZE ].mark ]
+ |  | (ui.subtitle)[]
+ |  | (ui.put)[ (fg)[ DIM ] | "[D] forget bookmark" ]
+ |  \_
  | (ui.list)[ @(p.list) | id | n | GROW | GROW ]
+ | ; a press on a place goes there, as a sidebar's does -- not one on a
+ | ; heading, which the cursor steps off
+ | I32 hit = (press_row)[ ui | id | @(p.list) | BTN_LEFT | 1 ]
+ | IF [ hit >= 0 && (p.rows.at)[ hit AS USIZE ].kind == PK_PLACE ]
+ |  | (place_go)[ ui | go | (p.rows.at)[ hit AS USIZE ] ]
+ |  \_
  | (place_skip)[ p | was ]
  | IF [ (ui.focused)[ id ] && ((ui.take)[ KEY_ENTER ] || (ui.take)[ 'l' AS U32 ] || (ui.take)[ KEY_RIGHT ]) ]
  |  | IF [ p.list.cursor >= 0 && p.list.cursor < n ]
- |  |  | (place_go)[ go | (p.rows.at)[ p.list.cursor AS USIZE ] ]
+ |  |  | (place_go)[ ui | go | (p.rows.at)[ p.list.cursor AS USIZE ] ]
+ |  |  \_
+ |  \_
+ | ; D or Delete: the bookmark under the cursor taken off -- the column has
+ | ; the keys, so the main column's trash never sees them
+ | IF [ (ui.focused)[ id ] && ((ui.take)[ 'D' AS U32 ] || (ui.take)[ KEY_DELETE ]) ]
+ |  | IF [ p.list.cursor >= 0 && p.list.cursor < n ]
+ |  |  | (place_forget)[ p | (p.rows.at)[ p.list.cursor AS USIZE ] ]
+ |  |  | (ui.redo)[]
  |  |  \_
  |  \_
  |

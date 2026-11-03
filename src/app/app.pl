@@ -36,12 +36,15 @@ TYPE Prompt: ENUM
  | PR_OPEN          ; a command to open `pending` with
  | PR_CLASH         ; o, s or k: what the paste does with names taken here
  | PR_FILTER        ; letters typed into the path bar: the main column narrows
+ | PR_MENU          ; a row's actions, offered by a right press: a click or a key
+ | PR_CHOOSE        ; o: which program to open `pending` with, 1 to 9, e to type
  \_
 
 TYPE Tab: STRUCT
  | String cwd               ; where the tab is
  | String label             ; its folder's name, for the top bar
  | I32 cursor               ; the main column's row, kept while away
+ | I32 slot                 ; its number, 1 to 9: 1 goes to it; there may be gaps
  \_
 
 TYPE AppData: STRUCT
@@ -65,10 +68,19 @@ TYPE AppData: STRUCT
  | Vector<String> pending   ; PR_DELETE: what goes
  | Vector<String> undo_from ; the last batch put in the trash: where each was,
  | Vector<String> undo_put  ;   and where it went -- u puts them back
+ | Vector<String> choices   ; PR_CHOOSE: the commands on offer, term: before
+ |                          ;   one that wants the terminal
  | I32 clashes              ; PR_CLASH: how many names the paste finds taken
  | String clash_one         ;   the first of them
  | String note              ; a word at the bottom: done, or what failed
  | U64 note_at              ; now_ms it was said
+ | String cd_file           ; --cd-file: Q writes the folder here, for the
+ |                          ;   shell function to go to; empty: Q cannot
+ | B1 help                  ; ? : the keys shown in the columns' place
+ | ScrollState help_sc      ;   and how far down they are
+ | C1 clicked{16}           ; a key a click stands for, this frame: "y" for the
+ |                          ;   [y] copy clicked; "" for none
+ | I32 close_tab            ; a tab middle-clicked, to close; -1: none
  |
  | PlacesPane  places
  | RootPane    root
@@ -111,13 +123,48 @@ ABYSS app_enter: [ @AppData a | String cwd ]
  | t.label = (folder_name)[ (cwd.cstr)[] ]
  \_
 
-; a tab in `cwd`, its row `cursor`
-Tab tab_of: [ @CONST C1 cwd | I32 cursor ]
+; a tab in `cwd`, its row `cursor`, number `slot`
+Tab tab_of: [ @CONST C1 cwd | I32 cursor | I32 slot ]
  | Tab t
  | t.cwd = (String.of)[ cwd ]
  | t.label = (folder_name)[ cwd ]
  | t.cursor = cursor
+ | t.slot = slot
  | RET [ t ]
+ \_
+
+; where the tab numbered `slot` is among the tabs; -1: there is none
+I32 tab_at_slot: [ @AppData a | I32 slot ]
+ | FOR [ USIZE i = 0 | i < (a.tabs.size)[] | i += 1 ]
+ |  | IF [ (a.tabs.at)[ i ].slot == slot ]
+ |  |  | RET [ i AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; the lowest number no tab has; 0: all nine are taken
+I32 free_slot: [ @AppData a ]
+ | FOR [ I32 k = 1 | k <= (MAX_TABS AS I32) | k += 1 ]
+ |  | IF [ (tab_at_slot)[ a | k ] < 0 ]
+ |  |  | RET [ k ]
+ |  |  \_
+ |  \_
+ | RET [ 0 ]
+ \_
+
+; a new tab, numbered `slot`, in `cwd`, put among the others in order of
+; their numbers -- the open one still the open one. Where it went
+I32 tab_add: [ @AppData a | @CONST C1 cwd | I32 cursor | I32 slot ]
+ | I32 open = (a.tabs.at)[ a.tab AS USIZE ].slot
+ | (a.tabs.push)[ (tab_of)[ cwd | cursor | slot ] ]
+ | USIZE i = (a.tabs.size)[] - 1
+ | WHILE [ i > 0 && (a.tabs.at)[ i - 1 ].slot > slot ]
+ |  | (a.tabs.swap)[ i - 1 | i ]
+ |  | i -= 1
+ |  \_
+ | a.tab = (tab_at_slot)[ a | open ] AS U32
+ | RET [ i AS I32 ]
  \_
 
 ABYSS tab_free: [ @Tab t ]
@@ -240,13 +287,45 @@ IFACE AppOps: [ @AppData me ]
  |  | (tab_enter)[ me ]
  |  \_
  |
- | ; a new tab where the open one is, opened
+ | ; a new tab where the open one is, under the lowest free number, opened
  | ABYSS new_tab: []
- |  | IF [ (me.tabs.size)[] >= MAX_TABS ]
+ |  | I32 slot = (free_slot)[ me ]
+ |  | IF [ slot == 0 ]
+ |  |  | (app_note)[ me | "all nine tabs are in use: x closes one" ]
  |  |  | RET []
  |  |  \_
- |  | (me.tabs.push)[ (tab_of)[ (me.cwd.cstr)[] | me.listing.table.list.cursor ] ]
- |  | (me.open_tab)[ (me.tabs.size)[] - 1 ]
+ |  | I32 at = (tab_add)[ me | (me.cwd.cstr)[] | me.listing.table.list.cursor | slot ]
+ |  | (me.open_tab)[ at AS USIZE ]
+ |  \_
+ |
+ | ; 1 to 9: to the tab with that number -- made, at home, if there is none
+ | ABYSS goto_slot: [ I32 slot ]
+ |  | I32 at = (tab_at_slot)[ me | slot ]
+ |  | IF [ at < 0 ]
+ |  |  | at = (tab_add)[ me | ((env)[ "HOME" ].unwrap_or)[ "/" ] | 0 | slot ]
+ |  |  \_
+ |  | (me.open_tab)[ at AS USIZE ]
+ |  \_
+ |
+ | ; Shift and 1 to 9: the tab with that number here, where the open one
+ | ; is -- made, or moved -- and opened
+ | ABYSS here_slot: [ I32 slot ]
+ |  | I32 cursor = me.listing.table.list.cursor
+ |  | I32 at = (tab_at_slot)[ me | slot ]
+ |  | IF [ at == (me.tab AS I32) ]
+ |  |  | RET []
+ |  |  \_
+ |  | IF [ at < 0 ]
+ |  |  | at = (tab_add)[ me | (me.cwd.cstr)[] | cursor | slot ]
+ |  | ELSE
+ |  |  | @Tab t = (me.tabs.at)[ at AS USIZE ]
+ |  |  | (t.cwd.deinit)[]
+ |  |  | (t.label.deinit)[]
+ |  |  | t.cwd = (String.of)[ (me.cwd.cstr)[] ]
+ |  |  | t.label = (folder_name)[ (me.cwd.cstr)[] ]
+ |  |  | t.cursor = cursor
+ |  |  \_
+ |  | (me.open_tab)[ at AS USIZE ]
  |  \_
  |
  | ; the open tab closed, unless it is the last; the one after it opens
@@ -289,15 +368,19 @@ IFACE AppOps: [ @AppData me ]
  |  | (strings_clear)[ @(me.undo_put) ]
  |  | (me.undo_put.deinit)[]
  |  | (me.renaming.deinit)[]
+ |  | (me.cd_file.deinit)[]
  |  | (me.clash_one.deinit)[]
+ |  | (strings_clear)[ @(me.choices) ]
+ |  | (me.choices.deinit)[]
  |  | (me.note.deinit)[]
  |  \_
  |
  + ANONYMOUS:
  | Self make: [ String cwd ]
  |  | Self s
- |  | (s.tabs.push)[ (tab_of)[ "" | 0 ] ]
+ |  | (s.tabs.push)[ (tab_of)[ "" | 0 | 1 ] ]
  |  | s.tab = 0
+ |  | s.close_tab = -1
  |  | s.listing.table.sort = CFG.sort
  |  | s.listing.table.desc = CFG.sort_desc
  |  | (app_enter)[ @s | cwd ]
@@ -306,7 +389,7 @@ IFACE AppOps: [ @AppData me ]
  |  |  | Result<String | IoError> full = (get_realpath)[ ((CFG.tabs.at)[ i ].cstr)[] ]
  |  |  | IF [ (full.is_ok)[] ]
  |  |  |  | String f = (full.unwrap)[]
- |  |  |  | (s.tabs.push)[ (tab_of)[ (f.cstr)[] | 0 ] ]
+ |  |  |  | (s.tabs.push)[ (tab_of)[ (f.cstr)[] | 0 | ((s.tabs.size)[] AS I32) + 1 ] ]
  |  |  |  | (f.deinit)[]
  |  |  |  \_
  |  |  \_

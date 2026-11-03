@@ -15,6 +15,7 @@ USE <modular.pl>
 !USES <../app/app.pl>
 !USES <../app/files.pl>
 !USES <../app/open.pl>
+!USES <../ui/main.pl>
 
 CONST I32 TASK_BAR = 24         ; cells of a task's bar
 CONST I32 TASK_TITLE = 36       ; its title, at most
@@ -33,6 +34,10 @@ ABYSS task_line: [ @Ui ui | @Task t ]
  | (ui.put_cell)[ (fg)[ TEXT ] | (t.title.cstr)[] | TASK_TITLE | TRUE ]
  | (ui.put)[ (fg)[ TEXT ] | " " ]
  |
+ | ; an extraction's end is not known: its count, on an empty track
+ | IF [ t.extracting ]
+ |  | pct = 0
+ |  \_
  | I32 fill = (pct * TASK_BAR) / 100
  | C1 bar{TASK_BAR * 3 + 1}
  | BufferSink b = (BufferSink.over)[ bar | (TASK_BAR * 3 + 1) AS USIZE ]
@@ -45,10 +50,10 @@ ABYSS task_line: [ @Ui ui | @Task t ]
  |  | (r.print)[ "─" ]
  |  \_
  | (ui.put)[ (fg)[ C_TRACK ] | bar AS @CONST C1 ]
- | IF [ t.counting ]
+ | IF [ t.counting || t.extracting ]
  |  | (ui.put)[ (fg)[ DIM ] | "   …   " ]
  |  \_
- | IF [ !(t.counting) ]
+ | IF [ !(t.counting) && !(t.extracting) ]
  |  | ((ui.pen)[ (fg)[ TEXT ] ].print)[ " %3d%%  " | pct ]
  |  \_
  |
@@ -56,11 +61,40 @@ ABYSS task_line: [ @Ui ui | @Task t ]
  |  | ((ui.pen)[ (fg)[ C_BROKEN ] ].print)[ "✗ %d failed: %s" | t.failed | (t.error.cstr)[] ]
  | ELIF [ !((task_running)[ t ]) ]
  |  | (ui.put)[ (fg)[ DIM ] | "done" ]
+ | ELIF [ t.extracting ]
+ |  | ((ui.pen)[ (fg)[ DIM ] ].print)[ "%d · %s" | t.done AS I32 | (t.now.cstr)[] ]
  | ELIF [ t.counting ]
  |  | ((ui.pen)[ (fg)[ DIM ] ].print)[ "counting… %s" | (t.now.cstr)[] ]
  | ELSE
  |  | (ui.put)[ (fg)[ DIM ] | (t.now.cstr)[] ]
  |  \_
+ \_
+
+; a row's actions, offered by a right press: what each says, its key, and
+; the key a click on it stands for
+CONST @CONST C1 MENU_WHAT{} = [ "open" | "open with" | "copy" | "cut" | "paste" | "rename" | "extract" | "trash" | "delete" | "new folder" ]
+CONST @CONST C1 MENU_KEY{} = [ "[⏎]" | "[o]" | "[y]" | "[d]" | "[p]" | "[r]" | "[E]" | "[D]" | "[X]" | "[n]" ]
+CONST @CONST C1 MENU_CODE{} = [ "open" | "o" | "y" | "d" | "p" | "r" | "E" | "D" | "X" | "n" ]
+CONST I32 NMENU = COUNT [ MENU_WHAT ]
+STATIC_ASSERT [ COUNT [ MENU_KEY ] == NMENU && COUNT [ MENU_CODE ] == NMENU | "a key and a code for each action" ]
+
+; an answer to click: its key in amber, what it does; TRUE when clicked
+B1 answer: [ @Ui ui | @CONST C1 key | @CONST C1 what | I32 k ]
+ | U32 id = (ui.idn)[ "answer" | k ]
+ | @Node t = (ui.text)[ FIT | 1 ]
+ | (t.with_id)[ id ]
+ | (t.pad)[ 1 | 0 ]
+ | (ui.cursor_on)[ id | CUR_HAND ]
+ | B1 over = (ui.hovered)[ id ]
+ | IF [ over ]
+ |  | (t.background)[ C_CURSOR ]
+ |  \_
+ | IF [ key{0} != '\0' ]
+ |  | (ui.put)[ (fg)[ AMBER ] | key ]
+ |  | (ui.put)[ (fg)[ TEXT ] | " " ]
+ |  \_
+ | (ui.put)[ (fg)[ SELECT [ key{0} == '\0' | DIM | TEXT ] ] | what ]
+ | RET [ (ui.clicked)[ id ] ]
  \_
 
 ; the last line, while something is asked: a name, or yes or no
@@ -87,42 +121,98 @@ ABYSS task_status: [ @Ui ui | @App a ]
  |  | RET []
  |  \_
  |
+ | IF [ a.prompt == PR_MENU ]
+ |  | (ui.row)[ GROW | 1 ]
+ |  | (ui.text)[ FIT | 1 ]
+ |  | String name = (main_path)[ @(a.listing) | a.listing.table.list.cursor ]
+ |  | String base = (get_dirname)[ (name.cstr)[] ]
+ |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " %s: " | (base.cstr)[] ]
+ |  | (name.deinit)[]
+ |  | (base.deinit)[]
+ |  | FOR [ I32 i = 0 | i < NMENU | i += 1 ]
+ |  |  | IF [ (answer)[ ui | MENU_KEY{i} | MENU_WHAT{i} | i ] ]
+ |  |  |  | (str_copy)[ a.clicked | 16 | MENU_CODE{i} ]
+ |  |  |  \_
+ |  |  \_
+ |  | IF [ (answer)[ ui | "" | "cancel" | NMENU ] ]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.close)[]
+ |  | RET []
+ |  \_
+ |
+ | IF [ a.prompt == PR_CHOOSE ]
+ |  | (ui.row)[ GROW | 1 ]
+ |  | (ui.text)[ FIT | 1 ]
+ |  | String one = (get_dirname)[ ((a.pending.at)[ 0 ].cstr)[] ]
+ |  | IF [ (a.pending.size)[] == 1 ]
+ |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " open %s with: " | (one.cstr)[] ]
+ |  | ELSE
+ |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " open %d with: " | (a.pending.size)[] AS I32 ]
+ |  |  \_
+ |  | (one.deinit)[]
+ |  | FOR [ USIZE i = 0 | i < (a.choices.size)[] | i += 1 ]
+ |  |  | C1 key{8}
+ |  |  | BufferSink b = (BufferSink.over)[ key | 8 ]
+ |  |  | (b.print)[ "[%d]" | (i AS I32) + 1 ]
+ |  |  | IF [ (answer)[ ui | key AS @CONST C1 | ((a.choices.at)[ i ].cstr)[] | 20 + (i AS I32) ] ]
+ |  |  |  | a.prompt = PR_NONE
+ |  |  |  | (open_pick)[ a | ui | i ]
+ |  |  |  \_
+ |  |  \_
+ |  | IF [ (answer)[ ui | "[e]" | "type a command" | 30 ] ]
+ |  |  | (open_edit)[ a ]
+ |  |  | (ui.set_focus)[ (ui.id)[ "prompt" ] ]
+ |  |  \_
+ |  | IF [ (answer)[ ui | "" | "cancel" | 31 ] ]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.close)[]
+ |  | RET []
+ |  \_
  | IF [ a.prompt == PR_CLASH ]
- |  | (ui.text)[ GROW | 1 ]
+ |  | (ui.row)[ GROW | 1 ]
+ |  | (ui.text)[ FIT | 1 ]
  |  | IF [ a.clashes == 1 ]
  |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " %s is here already: " | (a.clash_one.cstr)[] ]
  |  | ELSE
  |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " %d names are taken here: " | a.clashes ]
  |  |  \_
- |  | (ui.put)[ (fg)[ AMBER ] | "[o]" ]
- |  | (ui.put)[ (fg)[ TEXT ] | " overwrite   " ]
- |  | (ui.put)[ (fg)[ AMBER ] | "[s]" ]
- |  | (ui.put)[ (fg)[ TEXT ] | " skip   " ]
- |  | (ui.put)[ (fg)[ AMBER ] | "[k]" ]
- |  | (ui.put)[ (fg)[ TEXT ] | " keep both   " ]
- |  | (ui.put)[ (fg)[ DIM ] | "any other key cancels" ]
+ |  | IF [ (answer)[ ui | "[o]" | "overwrite" | 0 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_OVER ]
+ |  |  \_
+ |  | IF [ (answer)[ ui | "[s]" | "skip" | 1 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_SKIP ]
+ |  |  \_
+ |  | IF [ (answer)[ ui | "[k]" | "keep both" | 2 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_KEEP ]
+ |  |  \_
+ |  | IF [ (answer)[ ui | "" | "cancel" | 3 ] ]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.close)[]
  |  | RET []
  |  \_
  | IF [ a.prompt != PR_DELETE ]
  |  | RET []
  |  \_
- | (ui.text)[ GROW | 1 ]
- | IF [ a.prompt == PR_DELETE ]
- |  | USIZE n = (a.pending.size)[]
- |  | String one = (get_dirname)[ ((a.pending.at)[ 0 ].cstr)[] ]
- |  | IF [ n == 1 ]
- |  |  | ((ui.pen)[ (bold)[ C_BROKEN ] ].print)[ " delete %s for good? " | (one.cstr)[] ]
- |  | ELSE
- |  |  | ((ui.pen)[ (bold)[ C_BROKEN ] ].print)[ " delete %d items for good? " | n AS I32 ]
- |  |  \_
- |  | (one.deinit)[]
- |  | (ui.put)[ (fg)[ AMBER ] | "[y]" ]
- |  | (ui.put)[ (fg)[ TEXT ] | " yes   " ]
- |  | (ui.put)[ (fg)[ AMBER ] | "[n]" ]
- |  | (ui.put)[ (fg)[ TEXT ] | " no" ]
- |  | RET []
+ | (ui.row)[ GROW | 1 ]
+ | (ui.text)[ FIT | 1 ]
+ | USIZE n = (a.pending.size)[]
+ | String one = (get_dirname)[ ((a.pending.at)[ 0 ].cstr)[] ]
+ | IF [ n == 1 ]
+ |  | ((ui.pen)[ (bold)[ C_BROKEN ] ].print)[ " delete %s for good? " | (one.cstr)[] ]
+ | ELSE
+ |  | ((ui.pen)[ (bold)[ C_BROKEN ] ].print)[ " delete %d items for good? " | n AS I32 ]
  |  \_
- |
+ | (one.deinit)[]
+ | IF [ (answer)[ ui | "[y]" | "yes" | 0 ] ]
+ |  | (file_delete_now)[ a ]
+ | ELIF [ (answer)[ ui | "[n]" | "no" | 1 ] ]
+ |  | (strings_clear)[ @(a.pending) ]
+ |  | a.prompt = PR_NONE
+ |  \_
+ | (ui.close)[]
  \_
 
 ; only while there is a task, or a question to ask

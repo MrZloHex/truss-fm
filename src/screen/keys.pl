@@ -19,6 +19,18 @@ USE <modular.pl>
 !USES <../app/open.pl>
 
 CONST @CONST C1 TAB_KEYS{} = [ "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ]
+; Shift and 1 to 9, as a US keyboard has them
+CONST @CONST C1 TAB_HERE{} = [ "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*" | "(" ]
+
+; the key `k` pressed, or a click on what stands for it -- [y] copy in the
+; keys' line, Copy in a row's actions
+B1 hit: [ @Ui ui | @App a | @CONST C1 k ]
+ | IF [ (str_eq)[ a.clicked AS @CONST C1 | k ] ]
+ |  | a.clicked{0} = '\0'
+ |  | RET [ TRUE ]
+ |  \_
+ | RET [ (ui.shortcut)[ k ] ]
+ \_
 
 ; before the columns are drawn: the folder gone from under it, and the
 ; delete question, which takes every key so nothing moves under it
@@ -40,6 +52,23 @@ ABYSS keys_first: [ @Ui ui | @App a ]
  |  |  | (file_paste_as)[ a | CLASH_KEEP ]
  |  | ELSE
  |  |  | (ui.consume)[]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.redo)[]
+ |  \_
+ |
+ | ; which program to open with: 1 to 9, e to type one, anything else gives
+ | ; it up
+ | IF [ a.prompt == PR_CHOOSE && (ui.key)[] != 0 ]
+ |  | U32 k = (ui.key)[]
+ |  | (ui.consume)[]
+ |  | IF [ k >= ('1' AS U32) && k <= ('9' AS U32) && (k - ('1' AS U32)) < ((a.choices.size)[] AS U32) ]
+ |  |  | a.prompt = PR_NONE
+ |  |  | (open_pick)[ a | ui | (k - ('1' AS U32)) AS USIZE ]
+ |  | ELIF [ k == ('e' AS U32) ]
+ |  |  | (open_edit)[ a ]
+ |  |  | (ui.set_focus)[ (ui.id)[ "prompt" ] ]
+ |  | ELSE
  |  |  | a.prompt = PR_NONE
  |  |  \_
  |  | (ui.redo)[]
@@ -81,6 +110,16 @@ B1 keys_prompt: [ @Ui ui | @App a ]
  |  |  \_
  |  | RET [ TRUE ]
  |  \_
+ | ; a row's actions: a click on one, or its key, closes them and does it
+ | ; below as the key would; Esc or any other key only closes them
+ | IF [ a.prompt == PR_MENU ]
+ |  | IF [ a.clicked{0} != '\0' || (ui.key)[] != 0 ]
+ |  |  | a.prompt = PR_NONE
+ |  |  | (ui.take)[ KEY_ESC ]
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | RET [ a.prompt != PR_NONE ]
+ |  \_
  | IF [ a.prompt != PR_NONE ]
  |  | IF [ (ui.take)[ KEY_ESC ] ]
  |  |  | a.prompt = PR_NONE
@@ -94,31 +133,53 @@ B1 keys_prompt: [ @Ui ui | @App a ]
 
 ; y d p D r n o, Enter on a file, Esc out of V
 ABYSS keys_files: [ @Ui ui | @App a ]
+ | ; what the places column had to say: a bookmark taken off, or not
+ | IF [ (a.places.said.size)[] > 0 ]
+ |  | (app_note)[ a | (a.places.said.cstr)[] ]
+ |  | (a.places.said.deinit)[]
+ |  | a.places.said = (String.of)[ "" ]
+ |  \_
  | ; the files
  | B1 did = TRUE
- | IF [ (ui.shortcut)[ "y" ] ]
+ | IF [ (hit)[ ui | a | "y" ] ]
  |  | (file_yank)[ a | FALSE ]
- | ELIF [ (ui.shortcut)[ "d" ] ]
+ | ELIF [ (hit)[ ui | a | "d" ] ]
  |  | (file_yank)[ a | TRUE ]
- | ELIF [ (ui.shortcut)[ "p" ] ]
+ | ELIF [ (hit)[ ui | a | "p" ] ]
  |  | (file_paste)[ a ]
- | ELIF [ (ui.shortcut)[ "D" ] || (ui.take)[ KEY_DELETE ] ]
+ | ELIF [ (hit)[ ui | a | "D" ] || (ui.take)[ KEY_DELETE ] ]
  |  | (file_trash)[ a ]
- | ELIF [ (ui.shortcut)[ "X" ] ]
+ | ELIF [ (hit)[ ui | a | "X" ] ]
  |  | (file_ask_delete)[ a ]
- | ELIF [ (ui.shortcut)[ "u" ] ]
+ | ELIF [ (hit)[ ui | a | "?" ] ]
+ |  | a.help = TRUE
+ |  | a.help_sc.top = 0
+ |  | (ui.set_focus)[ (ui.id)[ "help" ] ]
+ | ELIF [ (hit)[ ui | a | "E" ] ]
+ |  | (file_extract)[ a ]
+ | ELIF [ (hit)[ ui | a | "u" ] ]
  |  | (file_untrash)[ a ]
- | ELIF [ (ui.shortcut)[ "r" ] ]
+ | ELIF [ (hit)[ ui | a | "r" ] ]
  |  | (file_ask_rename)[ a ]
- | ELIF [ (ui.shortcut)[ "n" ] ]
+ | ELIF [ (hit)[ ui | a | "n" ] ]
  |  | (file_ask_mkdir)[ a ]
- | ELIF [ (ui.shortcut)[ "o" ] || a.preview.want_with ]
+ | ELIF [ (hit)[ ui | a | "o" ] || a.preview.want_with ]
  |  | (open_ask)[ a ]
- | ELIF [ a.listing.want_open || a.preview.want_open ]
+ | ELIF [ a.listing.want_open || a.preview.want_open || (hit)[ ui | a | "open" ] ]
  |  | (open_now)[ a | ui ]
- | ELIF [ (ui.shortcut)[ "/" ] ]
+ | ELIF [ (hit)[ ui | a | "/" ] ]
  |  | (input_set)[ @(a.filter_field) | (a.listing.filter.cstr)[] ]
  |  | a.prompt = PR_FILTER
+ | ELIF [ (str_eq)[ a.clicked AS @CONST C1 | "V" ] ]
+ |  | a.clicked{0} = '\0'
+ |  | IF [ a.listing.visual ]
+ |  |  | (visual_off)[ @(a.listing) ]
+ |  | ELSE
+ |  |  | (visual_on)[ @(a.listing) ]
+ |  |  \_
+ | ELIF [ a.listing.want_menu ]
+ |  | a.listing.want_menu = FALSE
+ |  | a.prompt = PR_MENU
  | ELIF [ a.listing.visual && (ui.take)[ KEY_ESC ] ]
  |  | (visual_off)[ @(a.listing) ]
  | ELIF [ (a.listing.filter.size)[] > 0 && (ui.take)[ KEY_ESC ] ]
@@ -140,20 +201,27 @@ ABYSS keys_files: [ @Ui ui | @App a ]
 ; the one change of folder a frame: a tab (`want` from a click), . ~ b,
 ; t x, and else `go`, what a column asked for
 ABYSS keys_move: [ @Ui ui | @App a | @String go | I32 want ]
+ | ; 1 to 9: to that tab, made if need be; Shift and it: that tab here
+ | I32 slot = 0
+ | B1 here = FALSE
  | FOR [ I32 i = 0 | i < (MAX_TABS AS I32) | i += 1 ]
- |  | IF [ (ui.shortcut)[ TAB_KEYS{i} ] ]
- |  |  | want = i
+ |  | IF [ (hit)[ ui | a | TAB_KEYS{i} ] ]
+ |  |  | slot = i + 1
+ |  |  \_
+ |  | IF [ (hit)[ ui | a | TAB_HERE{i} ] ]
+ |  |  | slot = i + 1
+ |  |  | here = TRUE
  |  |  \_
  |  \_
- | IF [ (ui.shortcut)[ "." ] ]
+ | IF [ (hit)[ ui | a | "." ] ]
  |  | (app_toggle_hidden)[ a ]
  |  | (ui.redo)[]
  |  \_
- | IF [ (ui.shortcut)[ "~" ] ]
+ | IF [ (hit)[ ui | a | "~" ] ]
  |  | (go.deinit)[]
  |  | ?go = (String.of)[ ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
  |  \_
- | IF [ (ui.shortcut)[ "b" ] ]
+ | IF [ (hit)[ ui | a | "b" ] ]
  |  | I32 got = (bookmark_add)[ @(a.places) | (a.cwd.cstr)[] ]
  |  | IF [ got == BM_ADDED ]
  |  |  | (app_note)[ a | "bookmarked" ]
@@ -165,11 +233,22 @@ ABYSS keys_move: [ @Ui ui | @App a | @String go | I32 want ]
  |  | (ui.redo)[]
  |  \_
  |
- | IF [ (ui.shortcut)[ "t" ] ]
+ | IF [ a.close_tab >= 0 ]
+ |  | (a.open_tab)[ a.close_tab AS USIZE ]
+ |  | (a.close_tab)[]
+ |  | a.close_tab = -1
+ |  | (ui.redo)[]
+ | ELIF [ (hit)[ ui | a | "t" ] ]
  |  | (a.new_tab)[]
  |  | (ui.redo)[]
- | ELIF [ (ui.shortcut)[ "x" ] ]
+ | ELIF [ (hit)[ ui | a | "x" ] ]
  |  | (a.close_tab)[]
+ |  | (ui.redo)[]
+ | ELIF [ slot > 0 && here ]
+ |  | (a.here_slot)[ slot ]
+ |  | (ui.redo)[]
+ | ELIF [ slot > 0 ]
+ |  | (a.goto_slot)[ slot ]
  |  | (ui.redo)[]
  | ELIF [ want >= 0 ]
  |  | (a.open_tab)[ want AS USIZE ]

@@ -21,11 +21,15 @@ USE <std/os/os.pl>
 
 CONST USIZE CONFIG_LINE = 1024
 
-; how files of some kinds are opened: open.pdf,djvu = zathura
+; how files of some kinds are opened, or shown in the preview:
+;   open.pdf,djvu = zathura          open.video/* = mpv
+;   preview.json = jq -C .           preview.jpg,webp = image: magick %f png:-
 TYPE Opener: STRUCT
- | String exts              ; ,pdf,djvu, -- lower case, a comma each side; ,*, any
+ | String exts              ; ,pdf,djvu, -- lower case, a comma each side; ,*, any;
+ |                          ;   one with a / in it a MIME type: ,image/*,
  | String cmd               ; a shell command; %f where the files go, or after it
- | B1 term                  ; term: it wants the terminal, pluf steps aside
+ | B1 term                  ; open: term: it wants the terminal, pluf steps aside;
+ |                          ;   preview: image: what it prints is a picture
  \_
 
 ; the colours the config may set, as color.<name>; ui/look.pl gives each
@@ -50,6 +54,8 @@ TYPE Config: STRUCT
  | B1 devices               ; the DEVICES of the places column
  | Vector<String> places    ; place = lines, as they were: key, path, | name
  | Vector<Opener> openers   ; open.<exts> = lines, in order: the first that fits
+ | Vector<Opener> previewers ; preview.<exts> = lines, the same way
+ | Vector<Opener> extractors ; extract.<exts> = lines: how an archive is unpacked
  | U32 colors{NCOLORS}      ; COLOR_NAMES' as set, 0xFFrrggbb; 0: not set
  \_
 
@@ -140,15 +146,18 @@ LOCAL @C1 trim: [ @C1 s ]
  | RET [ s ]
  \_
 
-; open.<exts> = [term:] command, into CFG.openers; FALSE: no extension, or
-; no command
-LOCAL B1 opener_add: [ @CONST C1 exts | @CONST C1 v ]
+; open.<exts> = [term:] command, or preview.<exts> = [image:] command, into
+; `into`; FALSE: no extension, or no command
+LOCAL B1 opener_add: [ @Vector<Opener> into | @CONST C1 mark | @CONST C1 exts | @CONST C1 v ]
  | IF [ exts{0} == '\0' || v{0} == '\0' ]
  |  | RET [ FALSE ]
  |  \_
  | Opener o
- | o.term = (str_starts)[ v | "term:" ]
- | @CONST C1 cmd = SELECT [ o.term | v + 5 | v ]
+ | o.term = (str_starts)[ v | mark ]
+ | @CONST C1 cmd = v
+ | IF [ o.term ]
+ |  | cmd = v + (str_len)[ mark ]
+ |  \_
  | WHILE [ ?cmd == ' ' ]
  |  | cmd += 1
  |  \_
@@ -160,12 +169,14 @@ LOCAL B1 opener_add: [ @CONST C1 exts | @CONST C1 v ]
  | o.exts = (String.of)[ "," ]
  | FOR [ USIZE i = 0 | exts{i} != '\0' | i += 1 ]
  |  | C1 c = exts{i}
- |  | IF [ c != ' ' && c != '.' ]
+ |  | ; a . only where an extension starts -- .pdf as pdf -- not in a MIME type
+ |  | B1 lead = (o.exts.size)[] > 0 && (o.exts.cstr)[]{(o.exts.size)[] - 1} == ','
+ |  | IF [ c != ' ' && !(c == '.' && lead) ]
  |  |  | (o.exts.push)[ SELECT [ c >= 'A' && c <= 'Z' | (c + 32) AS C1 | c ] ]
  |  |  \_
  |  \_
  | (o.exts.push)[ ',' ]
- | (CFG.openers.push)[ o ]
+ | (into.push)[ o ]
  | RET [ TRUE ]
  \_
 
@@ -220,7 +231,14 @@ LOCAL B1 config_set: [ @CONST C1 k | @CONST C1 v ]
  |  \_
  | ; open.pdf,djvu = zathura %f -- open.* for any; term: for a terminal one
  | IF [ (str_starts)[ k | "open." ] ]
- |  | RET [ (opener_add)[ k + 5 | v ] ]
+ |  | RET [ (opener_add)[ @(CFG.openers) | "term:" | k + 5 | v ] ]
+ |  \_
+ | IF [ (str_starts)[ k | "preview." ] ]
+ |  | RET [ (opener_add)[ @(CFG.previewers) | "image:" | k + 8 | v ] ]
+ |  \_
+ | ; run in the new folder, the archive as %f
+ | IF [ (str_starts)[ k | "extract." ] ]
+ |  | RET [ (opener_add)[ @(CFG.extractors) | "\x01" | k + 8 | v ] ]
  |  \_
  | IF [ (str_eq)[ k | "tab" ] ]
  |  | C1 path{4096}
@@ -304,4 +322,14 @@ ABYSS config_free: []
  |  | ((CFG.openers.at)[ i ].cmd.deinit)[]
  |  \_
  | (CFG.openers.deinit)[]
+ | FOR [ USIZE i = 0 | i < (CFG.previewers.size)[] | i += 1 ]
+ |  | ((CFG.previewers.at)[ i ].exts.deinit)[]
+ |  | ((CFG.previewers.at)[ i ].cmd.deinit)[]
+ |  \_
+ | (CFG.previewers.deinit)[]
+ | FOR [ USIZE i = 0 | i < (CFG.extractors.size)[] | i += 1 ]
+ |  | ((CFG.extractors.at)[ i ].exts.deinit)[]
+ |  | ((CFG.extractors.at)[ i ].cmd.deinit)[]
+ |  \_
+ | (CFG.extractors.deinit)[]
  \_

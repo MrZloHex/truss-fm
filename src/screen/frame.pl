@@ -19,6 +19,7 @@ USE <modular.pl>
 !USES <bars.pl>
 !USES <taskbox.pl>
 !USES <keys.pl>
+!USES <help.pl>
 
 ; the tasks' slice of time, and the columns read again as they change the
 ; disk: now and then while they run, all of it once as they end
@@ -47,33 +48,62 @@ B1 frame: [ @Ui ui | @App a ]
  |  | a.rows = ui.rows
  |  | (ui.redo)[]
  |  \_
+ | a.clicked{0} = '\0'
  | (tick)[ ui | a ]
  | (keys_first)[ ui | a ]
  |
+ | ; a column -- or the path bar -- asks for another folder in `go`; the
+ | ; program goes there once all are drawn, and builds the frame again in it
+ | String go = (String.of)[ "" ]
+ | POSTLUDE (go.deinit)[]
  | I32 want = -1
  | (ui.column)[ GROW | GROW ]
  | (top_bar)[ ui | a | @want ]
- | (path_bar)[ ui | a ]
- |
- | ; a column asks for another folder in `go`; the program goes there once
- | ; all are drawn, and builds the frame again in it
- | String go = (String.of)[ "" ]
- | POSTLUDE (go.deinit)[]
- | (ui.row)[ GROW | GROW ]
- | (places_pane)[ ui | @(a.places) | (a.cwd.cstr)[] | @go ]
- | (root_pane)[ ui | @(a.root) | (a.cwd.cstr)[] | @go ]
- | (main_pane)[ ui | @(a.listing) | (a.cwd.cstr)[] | @go ]
- | (preview_pane)[ ui | @(a.preview) | @(a.listing) ]
- | (ui.close)[]
+ | (path_bar)[ ui | a | @go ]
+ | IF [ a.help ]
+ |  | (help_screen)[ ui | a ]
+ | ELSE
+ |  | (ui.row)[ GROW | GROW ]
+ |  | (places_pane)[ ui | @(a.places) | (a.cwd.cstr)[] | @go ]
+ |  | (root_pane)[ ui | @(a.root) | (a.cwd.cstr)[] | @go ]
+ |  | (main_pane)[ ui | @(a.listing) | (a.cwd.cstr)[] | @go ]
+ |  | (preview_pane)[ ui | @(a.preview) | @(a.listing) ]
+ |  | (ui.close)[]
+ |  \_
  |
  | (tasks_bar)[ ui | a ]
- | (hotkeys)[ ui | a ]
+ | (status_line)[ ui | a ]
  | (ui.close)[]
+ |
+ | ; the help open: only what closes it -- q too, which does not quit here
+ | IF [ a.help ]
+ |  | IF [ (hit)[ ui | a | "?" ] || (ui.take)[ KEY_ESC ] || (ui.take)[ 'q' AS U32 ] ]
+ |  |  | a.help = FALSE
+ |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | RET [ TRUE ]
+ |  \_
  |
  | IF [ (keys_prompt)[ ui | a ] ]
  |  | RET [ TRUE ]
  |  \_
  | (keys_files)[ ui | a ]
  | (keys_move)[ ui | a | @go | want ]
- | RET [ !(ui.shortcut)[ "q" ] ]
+ | ; Q: out, and the shell to this folder -- through the file --cd-file names
+ | IF [ (hit)[ ui | a | "Q" ] ]
+ |  | IF [ (a.cd_file.size)[] == 0 ]
+ |  |  | (app_note)[ a | "Q needs pluf's shell function: eval \"$(pluf --init zsh)\" in your rc" ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | C1 line{4200}
+ |  | BufferSink b = (BufferSink.over)[ line | 4200 ]
+ |  | (b.print)[ "%s\n" | (a.cwd.cstr)[] ]
+ |  | IF [ ((write_file)[ (a.cd_file.cstr)[] | line AS @CONST C1 ].is_err)[] ]
+ |  |  | (app_note)[ a | "the --cd-file cannot be written" ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ !((hit)[ ui | a | "q" ]) ]
  \_

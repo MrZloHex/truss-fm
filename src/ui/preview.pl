@@ -15,6 +15,9 @@ USE <modular.pl>
 !USES <../core/fs.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
+!USES <../core/rules.pl>
+!USES <../core/job.pl>
+!USES <../core/tasks.pl>
 
 CONST USIZE PREVIEW_HEAD = 32768        ; what is kept of a text
 CONST U64 PREVIEW_COUNT = 16777216      ; past this its lines are not counted
@@ -30,6 +33,8 @@ TYPE PreviewKind: ENUM
  | PV_DIR
  | PV_BROKEN
  | PV_UNREADABLE
+ | PV_RUNNING      ; a previewer is at work
+ | PV_FILE          ; none fits: what `file` says it is
  \_
 
 TYPE PreviewPane: STRUCT
@@ -48,6 +53,12 @@ TYPE PreviewPane: STRUCT
  | Vector<FileRecord> files ; a folder's listing
  | B1 want_open             ; ↲ OPEN clicked: the program sees to it
  | B1 want_with             ; o WITH clicked
+ |
+ | Job job                  ; the previewer the config gave this file, if any
+ | B1 job_image             ; image: what it prints is a picture
+ | B1 ansi                  ; the text is a previewer's: its colours are kept
+ | String via               ; that previewer's program, for the header
+ | String desc              ; PV_FILE: file's word for it
  \_
 
 ; --- reading --------------------------------------------------------------------
@@ -60,6 +71,12 @@ ABYSS preview_forget: [ @PreviewPane p ]
  |  | (image_free)[ @(p.img) ]
  |  | p.has_img = FALSE
  |  \_
+ | (job_stop)[ @(p.job) ]
+ | p.ansi = FALSE
+ | (p.via.deinit)[]
+ | p.via = (String.of)[ "" ]
+ | (p.desc.deinit)[]
+ | p.desc = (String.of)[ "" ]
  | p.kind = PV_NONE
  | p.head_len = 0
  | p.lines = 0
@@ -70,6 +87,9 @@ ABYSS dispose_preview: [ @PreviewPane p ]
  | (preview_forget)[ p ]
  | (p.path.deinit)[]
  | (p.files.deinit)[]
+ | (p.job.out.deinit)[]
+ | (p.via.deinit)[]
+ | (p.desc.deinit)[]
  \_
 
 B1 preview_is_image: [ @CONST C1 name ]
@@ -107,7 +127,7 @@ ABYSS preview_read_text: [ @PreviewPane p | @CONST C1 path ]
  | p.head_len = (got.unwrap)[]
  | FOR [ USIZE i = 0 | i < p.head_len | i += 1 ]
  |  | IF [ p.head{i} == '\0' ]
- |  |  | p.kind = PV_BINARY
+ |  |  | (preview_describe)[ p ]
  |  |  | RET []
  |  |  \_
  |  \_
@@ -132,6 +152,114 @@ ABYSS preview_read_text: [ @PreviewPane p | @CONST C1 path ]
  \_
 
 ; read again only when the cursor is on another file
+CONST USIZE PREVIEW_CMD_TEXT = 262144      ; what is kept of a previewer's text
+CONST USIZE PREVIEW_CMD_IMAGE = 33554432   ; and of its picture
+
+; the previewer the config gives the file at `path`, started. FALSE: none
+; fits, or it cannot be started
+B1 preview_by_rule: [ @PreviewPane p | @CONST C1 path ]
+ | @Opener o = (rule_for)[ @(CFG.previewers) | path ]
+ | IF [ o == NULL ]
+ |  | RET [ FALSE ]
+ |  \_
+ | p.job_image = o.term
+ | IF [ !((job_start)[ @(p.job) | (o.cmd.cstr)[] | path | SELECT [ o.term | PREVIEW_CMD_IMAGE | PREVIEW_CMD_TEXT ] ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | ; its program's name, for the header: ${EDITOR:-x} and the like as written
+ | C1 word{64}
+ | USIZE n = 0
+ | @CONST C1 c = (o.cmd.cstr)[]
+ | WHILE [ c{n} != '\0' && c{n} != ' ' && n + 1 < 64 ]
+ |  | word{n} = c{n}
+ |  | n += 1
+ |  \_
+ | word{n} = '\0'
+ | (p.via.deinit)[]
+ | p.via = (String.of)[ word AS @CONST C1 ]
+ | RET [ TRUE ]
+ \_
+
+; where a previewer's picture is put to be read: $XDG_CACHE_HOME/pluf, or
+; ~/.cache/pluf, made if need be; `png` its kind
+ABYSS preview_cache: [ @C1 out | B1 png ]
+ | BufferSink b = (BufferSink.over)[ out | 4096 ]
+ | Option<@CONST C1> cache = (env)[ "XDG_CACHE_HOME" ]
+ | IF [ (cache.is_some)[] && (cache.unwrap)[]{0} == '/' ]
+ |  | (b.print)[ "%s/pluf" | (cache.unwrap)[] ]
+ | ELSE
+ |  | (b.print)[ "%s/.cache/pluf" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ |  \_
+ | (fs_make_dirs)[ out AS @CONST C1 ]
+ | (b.print)[ "/preview.%s" | SELECT [ png | "png" | "ppm" ] ]
+ \_
+
+; the previewer's work taken in: some more of what it printed, and once it
+; is done, that shown -- as text with its colours, or as a picture
+ABYSS preview_pump: [ @Ui ui | @PreviewPane p ]
+ | IF [ p.kind != PV_RUNNING ]
+ |  | RET []
+ |  \_
+ | IF [ !((job_pump)[ @(p.job) ]) ]
+ |  | (ui.wake_in)[ 30 ]
+ |  | RET []
+ |  \_
+ | @CONST C1 out = (p.job.out.cstr)[]
+ | USIZE n = (p.job.out.size)[]
+ | IF [ n == 0 ]
+ |  | (preview_describe)[ p ]
+ |  | RET []
+ |  \_
+ | IF [ p.job_image ]
+ |  | ; PNG by its mark, else taken for PPM
+ |  | B1 png = n > 4 && (out{1} AS U8) == ('P' AS U8) && (out{2} AS U8) == ('N' AS U8) && (out{3} AS U8) == ('G' AS U8)
+ |  | C1 file{4096}
+ |  | (preview_cache)[ file | png ]
+ |  | (fs_remove)[ file AS @CONST C1 ]
+ |  | I32 fd = (px_open)[ file AS @CONST C1 | O_MAKE | 0x180 ]
+ |  | IF [ fd >= 0 ]
+ |  |  | (px_write)[ fd | out AS @CONST ABYSS | n ]
+ |  |  | (px_close)[ fd ]
+ |  |  | p.has_img = (image_load)[ @(p.img) | file AS @CONST C1 ]
+ |  |  \_
+ |  | IF [ p.has_img ]
+ |  |  | p.kind = PV_IMAGE
+ |  | ELSE
+ |  |  | (preview_describe)[ p ]
+ |  |  \_
+ |  | (ui.redo)[]
+ |  | RET []
+ |  \_
+ | USIZE keep = SELECT [ n < PREVIEW_HEAD | n | PREVIEW_HEAD ]
+ | FOR [ USIZE i = 0 | i < keep | i += 1 ]
+ |  | p.head{i} = out{i}
+ |  \_
+ | p.head_len = keep
+ | C1 last = '\n'
+ | I64 lines = (count_lines)[ out | n | @last ]
+ | p.lines = SELECT [ last == '\n' | lines | lines + 1 ]
+ | p.ansi = TRUE
+ | p.kind = PV_TEXT
+ | (ui.redo)[]
+ \_
+
+; no previewer, or none that worked: what `file` says the file is
+ABYSS preview_describe: [ @PreviewPane p ]
+ | @CONST C1 argv{} = [ "file" | "-b" | "--" | (p.path.cstr)[] | NULL ]
+ | String said = (String.of)[ "" ]
+ | (process_output<System>)[ argv | @said ]
+ | ; one line, no end
+ | USIZE n = 0
+ | @CONST C1 s = (said.cstr)[]
+ | WHILE [ s{n} != '\0' && s{n} != '\n' ]
+ |  | n += 1
+ |  \_
+ | (said.truncate)[ n ]
+ | (p.desc.deinit)[]
+ | p.desc = said
+ | p.kind = PV_FILE
+ \_
+
 ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | I32 at = m.table.list.cursor
  | B1 some = at >= 0 && (at AS USIZE) < (m.files.size)[]
@@ -165,6 +293,8 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  |  | p.kind = PV_BROKEN
  | ELIF [ p.entry.dir ]
  |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | CFG.hidden | "" ] | PV_DIR | PV_UNREADABLE ]
+ | ELIF [ (preview_by_rule)[ p | path AS @CONST C1 ] ]
+ |  | p.kind = PV_RUNNING
  | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && p.entry.size <= PREVIEW_IMAGE ]
  |  | p.has_img = (image_load)[ @(p.img) | path AS @CONST C1 ]
  |  | p.kind = SELECT [ p.has_img | PV_IMAGE | PV_BINARY ]
@@ -250,7 +380,11 @@ ABYSS preview_head: [ @Ui ui | @PreviewPane p | I32 width ]
  |
  | C1 line{128}
  | BufferSink b = (BufferSink.over)[ line | 128 ]
- | IF [ p.kind == PV_TEXT && p.lines >= 0 ]
+ | IF [ p.kind == PV_TEXT && p.ansi ]
+ |  | (b.print)[ "%s · by %s" | size AS @CONST C1 | (p.via.cstr)[] ]
+ | ELIF [ p.kind == PV_IMAGE && (p.via.size)[] > 0 ]
+ |  | (b.print)[ "%s · %d×%d · by %s" | size AS @CONST C1 | p.img.w | p.img.h | (p.via.cstr)[] ]
+ | ELIF [ p.kind == PV_TEXT && p.lines >= 0 ]
  |  | (b.print)[ "text · %s · %s %s" | size AS @CONST C1 | count AS @CONST C1 | SELECT [ p.lines == 1 | "line" | "lines" ] ]
  | ELIF [ p.kind == PV_TEXT ]
  |  | (b.print)[ "text · %s" | size AS @CONST C1 ]
@@ -260,6 +394,10 @@ ABYSS preview_head: [ @Ui ui | @PreviewPane p | I32 width ]
  |  | (b.print)[ "folder · %d %s" | entries AS I32 | SELECT [ entries == 1 | "entry" | "entries" ] ]
  | ELIF [ p.kind == PV_BROKEN ]
  |  | (b.print)[ "link" ]
+ | ELIF [ p.kind == PV_RUNNING ]
+ |  | (b.print)[ "%s · %s …" | size AS @CONST C1 | (p.via.cstr)[] ]
+ | ELIF [ p.kind == PV_FILE ]
+ |  | (b.print)[ "%s" | size AS @CONST C1 ]
  | ELSE
  |  | (b.print)[ "binary · %s" | size AS @CONST C1 ]
  |  \_
@@ -270,6 +408,137 @@ ABYSS preview_head: [ @Ui ui | @PreviewPane p | I32 width ]
 ; a text's lines from the top, as many as `rows`, cut to `width`. Comments
 ; dim; the first other line of a table, its header, amber; in Markdown its
 ; headings amber
+; --- a previewer's colours --------------------------------------------------------
+
+; the 16 colours of a terminal, as near the palette as they go: black,
+; red, green, yellow, blue, magenta, cyan, white, then their bright ones
+Color ansi16: [ I32 k ]
+ | IF [ k == 0 ]
+ |  | RET [ LINE ]
+ |  \_
+ | IF [ k == 1 || k == 9 ]
+ |  | RET [ RED ]
+ |  \_
+ | IF [ k == 2 || k == 10 ]
+ |  | RET [ SAGE ]
+ |  \_
+ | IF [ k == 3 || k == 11 ]
+ |  | RET [ AMBER ]
+ |  \_
+ | IF [ k == 4 || k == 12 ]
+ |  | RET [ STEEL ]
+ |  \_
+ | IF [ k == 5 || k == 13 ]
+ |  | RET [ 0xFFD787AF AS Color ]
+ |  \_
+ | IF [ k == 6 || k == 14 ]
+ |  | RET [ 0xFF87D7D7 AS Color ]
+ |  \_
+ | IF [ k == 8 ]
+ |  | RET [ DIM ]
+ |  \_
+ | RET [ TEXT ]
+ \_
+
+; xterm's 256: the 16, a 6×6×6 cube, 24 greys
+Color ansi256: [ I32 n ]
+ | IF [ n < 16 ]
+ |  | RET [ (ansi16)[ n ] ]
+ |  \_
+ | IF [ n >= 232 ]
+ |  | U32 g = (8 + 10 * (n - 232)) AS U32
+ |  | RET [ (0xFF000000 | (g << 16) | (g << 8) | g) AS Color ]
+ |  \_
+ | I32 c = n - 16
+ | U32 lv{6} = [ 0 | 95 | 135 | 175 | 215 | 255 ]
+ | RET [ (0xFF000000 | (lv{c / 36} << 16) | (lv{(c / 6) % 6} << 8) | lv{c % 6}) AS Color ]
+ \_
+
+; a line as a terminal would colour it: its ESC [ ... m set the colour of
+; what follows -- 30-37, 90-97, 38;5;n, 38;2;r;g;b, 39 and 0 back -- any
+; other sequence left out; no more than `width` cells
+ABYSS ansi_line: [ @Ui ui | @CONST C1 s | I32 width ]
+ | Color c = TEXT
+ | C1 run{PREVIEW_LINE}
+ | USIZE n = 0
+ | I32 cells = 0
+ | USIZE i = 0
+ | WHILE [ s{i} != '\0' && cells < width ]
+ |  | IF [ (s{i} AS U8) == 0x1B AS U8 && s{i + 1} == '[' ]
+ |  |  | ; what came before, in the colour it had
+ |  |  | run{n} = '\0'
+ |  |  | IF [ n > 0 ]
+ |  |  |  | (ui.put)[ (fg)[ c ] | run AS @CONST C1 ]
+ |  |  |  \_
+ |  |  | n = 0
+ |  |  | ; the numbers, to the letter that ends it
+ |  |  | I32 nums{16}
+ |  |  | I32 k = 0
+ |  |  | I32 v = 0
+ |  |  | USIZE j = i + 2
+ |  |  | WHILE [ s{j} != '\0' && ((s{j} >= '0' && s{j} <= '9') || s{j} == ';') ]
+ |  |  |  | IF [ s{j} == ';' ]
+ |  |  |  |  | IF [ k < 16 ]
+ |  |  |  |  |  | nums{k} = v
+ |  |  |  |  |  | k += 1
+ |  |  |  |  |  \_
+ |  |  |  |  | v = 0
+ |  |  |  | ELSE
+ |  |  |  |  | v = v * 10 + ((s{j} - '0') AS I32)
+ |  |  |  |  \_
+ |  |  |  | j += 1
+ |  |  |  \_
+ |  |  | IF [ k < 16 ]
+ |  |  |  | nums{k} = v
+ |  |  |  | k += 1
+ |  |  |  \_
+ |  |  | IF [ s{j} == 'm' ]
+ |  |  |  | I32 q = 0
+ |  |  |  | WHILE [ q < k ]
+ |  |  |  |  | I32 x = nums{q}
+ |  |  |  |  | IF [ x == 0 || x == 39 ]
+ |  |  |  |  |  | c = TEXT
+ |  |  |  |  | ELIF [ x >= 30 && x <= 37 ]
+ |  |  |  |  |  | c = (ansi16)[ x - 30 ]
+ |  |  |  |  | ELIF [ x >= 90 && x <= 97 ]
+ |  |  |  |  |  | c = (ansi16)[ x - 90 + 8 ]
+ |  |  |  |  | ELIF [ x == 38 && q + 2 < k && nums{q + 1} == 5 ]
+ |  |  |  |  |  | c = (ansi256)[ nums{q + 2} ]
+ |  |  |  |  |  | q += 2
+ |  |  |  |  | ELIF [ x == 38 && q + 4 < k && nums{q + 1} == 2 ]
+ |  |  |  |  |  | c = (0xFF000000 | ((nums{q + 2} AS U32) << 16) | ((nums{q + 3} AS U32) << 8) | (nums{q + 4} AS U32)) AS Color
+ |  |  |  |  |  | q += 4
+ |  |  |  |  | ELIF [ x == 48 && q + 1 < k ]
+ |  |  |  |  |  | ; a background: not kept, its numbers stepped over
+ |  |  |  |  |  | q += SELECT [ nums{q + 1} == 5 | 2 | SELECT [ nums{q + 1} == 2 | 4 | 0 ] ]
+ |  |  |  |  |  \_
+ |  |  |  |  | q += 1
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | i = SELECT [ s{j} == '\0' | j | j + 1 ]
+ |  |  | CONTINUE
+ |  |  \_
+ |  | IF [ ((s{i} AS U8) & 0xC0) != 0x80 ]
+ |  |  | cells += 1
+ |  |  \_
+ |  | IF [ n + 1 < PREVIEW_LINE ]
+ |  |  | run{n} = s{i}
+ |  |  | n += 1
+ |  |  \_
+ |  | i += 1
+ |  \_
+ | ; a character cut at `width` mid-way: its continuation bytes too
+ | WHILE [ s{i} != '\0' && ((s{i} AS U8) & 0xC0) == 0x80 && n + 1 < PREVIEW_LINE ]
+ |  | run{n} = s{i}
+ |  | n += 1
+ |  | i += 1
+ |  \_
+ | run{n} = '\0'
+ | IF [ n > 0 ]
+ |  | (ui.put)[ (fg)[ c ] | run AS @CONST C1 ]
+ |  \_
+ \_
+
 ABYSS preview_text: [ @Ui ui | @PreviewPane p | I32 rows | I32 width ]
  | B1 markdown = (str_ends)[ (p.entry.name.cstr)[] | ".md" ]
  | B1 more = p.lines < 0 || p.lines > (rows AS I64)
@@ -289,7 +558,11 @@ ABYSS preview_text: [ @Ui ui | @PreviewPane p | I32 rows | I32 width ]
  |  |  | c = SELECT [ table | C_HEADER | TEXT ]
  |  |  \_
  |  | (ui.text)[ GROW | 1 ]
- |  | (ui.put_cell)[ (fg)[ c ] | line AS @CONST C1 | width | TRUE ]
+ |  | IF [ p.ansi ]
+ |  |  | (ansi_line)[ ui | line AS @CONST C1 | width ]
+ |  | ELSE
+ |  |  | (ui.put_cell)[ (fg)[ c ] | line AS @CONST C1 | width | TRUE ]
+ |  |  \_
  |  | shown += 1
  |  \_
  |
@@ -331,7 +604,7 @@ ABYSS preview_label: [ @Ui ui | @CONST C1 label ]
  \_
 
 ABYSS preview_meta: [ @Ui ui | @PreviewPane p ]
- | DateTime d = (date_of_unix)[ p.entry.modified ]
+ | DateTime d = (local_date)[ p.entry.modified ]
  | (preview_label)[ ui | "modified" ]
  | ((ui.pen)[ (fg)[ TEXT ] ].print)[ "%02d %s %d %02d:%02d" | d.day AS I32 | MONTHS{(d.month AS I32) - 1} | d.year AS I32 | d.hour AS I32 | d.minute AS I32 ]
  |
@@ -373,6 +646,11 @@ ABYSS preview_body: [ @Ui ui | @PreviewPane p | Rect r | I32 width ]
  |  | (preview_dir)[ ui | p | r.h | width ]
  | ELIF [ p.kind == PV_BINARY ]
  |  | (preview_note)[ ui | DIM | "no preview" ]
+ | ELIF [ p.kind == PV_RUNNING ]
+ |  | (preview_note)[ ui | DIM | "…" ]
+ | ELIF [ p.kind == PV_FILE ]
+ |  | ; file's words, wrapped to the column
+ |  | (ui.paragraph)[ (p.desc.cstr)[] ]
  | ELIF [ p.kind == PV_BROKEN ]
  |  | (preview_note)[ ui | C_BROKEN | "✗ points to nothing" ]
  | ELIF [ p.kind == PV_UNREADABLE ]
@@ -382,6 +660,7 @@ ABYSS preview_body: [ @Ui ui | @PreviewPane p | Rect r | I32 width ]
 
 ABYSS preview_pane: [ @Ui ui | @PreviewPane p | @MainPane m ]
  | (update_preview)[ p | m ]
+ | (preview_pump)[ ui | p ]
  | U32 id = (ui.id)[ "preview" ]
  | ; the body's size is known from the last frame
  | Rect r = (ui.rect_of)[ id ]

@@ -14,6 +14,7 @@ USE <modular.pl>
 !USES <../core/fs.pl>
 !USES <../core/tasks.pl>
 !USES <../core/trash.pl>
+!USES <../core/extract.pl>
 !USES <../core/config.pl>
 !USES <../ui/main.pl>
 
@@ -127,6 +128,26 @@ ABYSS file_trash: [ @AppData me ]
  | (app_refresh)[ me | TRUE ]
  | ; the first trashing makes the trash: the places read again, to list it
  | me.places.read = FALSE
+ \_
+
+; the archives among the rows chosen in visual -- or the file under the
+; cursor -- each unpacked here, into a folder of its own, as a task
+ABYSS file_extract: [ @AppData me ]
+ | Vector<String> paths
+ | (main_selection)[ @(me.listing) | @paths ]
+ | I32 started = 0
+ | FOR [ USIZE i = 0 | i < (paths.size)[] | i += 1 ]
+ |  | @CONST C1 p = ((paths.at)[ i ].cstr)[]
+ |  | IF [ (is_archive)[ p ] ]
+ |  |  | (me.tasks.push)[ (task_extract)[ p | (me.cwd.cstr)[] ] ]
+ |  |  | started += 1
+ |  |  \_
+ |  \_
+ | IF [ started == 0 ]
+ |  | (app_note)[ me | "not an archive pluf knows: an extract.<ext> line in the config teaches it" ]
+ |  \_
+ | (strings_clear)[ @paths ]
+ | (paths.deinit)[]
  \_
 
 ; the last batch put in the trash, back where it was

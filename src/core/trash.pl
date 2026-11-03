@@ -17,29 +17,13 @@ USE <std/os/time.pl>
 
 !USES <fs.pl>
 !USES <tasks.pl>
+!USES <sys.pl>
 
 CONST USIZE TRASH_PATH = 4096
 
 U32 px_getuid: []
  + SYMBOL "getuid"
 
-; struct tm, as glibc has it on a 64-bit machine
-TYPE Tm: STRUCT
- | I32 sec
- | I32 min
- | I32 hour
- | I32 mday
- | I32 mon          ; 0 to 11
- | I32 year         ; since 1900
- | I32 wday
- | I32 yday
- | I32 isdst
- | I64 gmtoff
- | @CONST C1 zone
- \_
-
-@Tm px_localtime_r: [ @CONST I64 t | @Tm out ]
- + SYMBOL "localtime_r"
 
 ; the home trash: $XDG_DATA_HOME/Trash, or ~/.local/share/Trash
 ABYSS trash_home: [ @C1 out | USIZE cap ]

@@ -87,4 +87,14 @@ ABYSS root_pane: [ @Ui ui | @RootPane p | @CONST C1 cwd | @String go ]
  |  \_
  | (ui.end)[]
  | (ui.close)[]
+ |
+ | ; a double press on a folder: as l -- opened, the main column focused
+ | IF [ (press_row)[ ui | id | @(p.list) | BTN_LEFT | 2 ] == p.list.cursor ]
+ |  | @CONST FileRecord e = (record_at)[ @(p.files) | p.list.cursor ]
+ |  | IF [ e != NULL && e.dir && !(e.broken) && e.count >= 0 ]
+ |  |  | (ask_go)[ go | GO_IN | cwd | (p.dir.cstr)[] | e ]
+ |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  \_
  \_

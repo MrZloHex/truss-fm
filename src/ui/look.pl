@@ -38,6 +38,7 @@ Color C_HIDDEN     = 0        ; a hidden file, a binary
 Color C_BROKEN     = 0        ; ✗ and a link to nothing
 Color C_REMOTE     = 0      ; ● a remote that is online
 Color C_HEADER     = 0      ; the header lines of a preview
+Color C_KEY          = 0      ; a key in the help, apart from its headings
 Color C_MATCH      = 0      ; what a filter matched, letter by letter
 Color C_NOMATCH    = 0       ; a file it left out
 Color C_TASK       = 0      ; █ of a task's bar
@@ -56,6 +57,7 @@ ABYSS look_derive: []
  | C_BROKEN = RED
  | C_REMOTE = OLIVE
  | C_HEADER = AMBER
+ | C_KEY = STEEL
  | C_MATCH = AMBER
  | C_NOMATCH = LINE
  | C_TASK = AMBER

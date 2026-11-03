@@ -18,6 +18,7 @@ USE <std/os/process.pl>
 
 USE <modular.pl>
 !USES <../core/config.pl>
+!USES <../core/rules.pl>
 !USES <app.pl>
 !USES <../ui/main.pl>
 
@@ -28,74 +29,6 @@ CONST @CONST C1 OPEN_FALLBACK = "xdg-open"
 ; to run: away from pluf's terminal, so it cannot read its keys
 CONST @CONST C1 SH_IN_TERMINAL = "l=$1; shift; (${TERMINAL:-xterm} -e sh -c \"$l\" pluf \"$@\") </dev/null >/dev/null 2>&1 &"
 CONST @CONST C1 SH_IN_BACKGROUND = "l=$1; shift; (sh -c \"$l\" pluf \"$@\") </dev/null >/dev/null 2>&1 &"
-
-; the opener for the file `name`: the first rule with its extension, or
-; else the first open.*; NULL: none, xdg-open then
-@Opener opener_for: [ @CONST C1 name ]
- | ; its extension, lower case, between commas: ,pdf, -- none for .bashrc
- | USIZE dot = 0
- | FOR [ USIZE i = 1 | name{i} != '\0' | i += 1 ]
- |  | IF [ name{i} == '.' ]
- |  |  | dot = i
- |  |  \_
- |  \_
- | C1 want{64}
- | want{0} = '\0'
- | IF [ dot > 0 && (str_len)[ name + dot + 1 ] < 60 ]
- |  | BufferSink b = (BufferSink.over)[ want | 64 ]
- |  | (b.print)[ ",%s," | name + dot + 1 ]
- |  | FOR [ USIZE i = 0 | want{i} != '\0' | i += 1 ]
- |  |  | IF [ want{i} >= 'A' && want{i} <= 'Z' ]
- |  |  |  | want{i} = (want{i} + 32) AS C1
- |  |  |  \_
- |  |  \_
- |  \_
- |
- | @Opener any = NULL
- | FOR [ USIZE i = 0 | i < (CFG.openers.size)[] | i += 1 ]
- |  | @Opener o = (CFG.openers.at)[ i ]
- |  | IF [ want{0} != '\0' && (o.exts.contains)[ want AS @CONST C1 ] ]
- |  |  | RET [ o ]
- |  |  \_
- |  | IF [ any == NULL && (o.exts.contains)[ ",*," ] ]
- |  |  | any = o
- |  |  \_
- |  \_
- | RET [ any ]
- \_
-
-; `cmd` as a line for sh, the files in "$@": at each %f, or else at the end
-String shell_line: [ @CONST C1 cmd ]
- | String out = (String.of)[ "" ]
- | B1 placed = FALSE
- | FOR [ USIZE i = 0 | cmd{i} != '\0' | i += 1 ]
- |  | IF [ cmd{i} == '%' && cmd{i + 1} == 'f' ]
- |  |  | (out.append)[ "\"$@\"" ]
- |  |  | placed = TRUE
- |  |  | i += 1
- |  |  | CONTINUE
- |  |  \_
- |  | (out.push)[ cmd{i} ]
- |  \_
- | IF [ !placed ]
- |  | (out.append)[ " \"$@\"" ]
- |  \_
- | RET [ out ]
- \_
-
-; is the program `cmd` begins with there to be run? A name that sh finds
-B1 program_there: [ @CONST C1 cmd ]
- | C1 word{256}
- | USIZE n = 0
- | WHILE [ cmd{n} != '\0' && cmd{n} != ' ' && n + 1 < 256 ]
- |  | word{n} = cmd{n}
- |  | n += 1
- |  \_
- | word{n} = '\0'
- | @CONST C1 argv{} = [ "sh" | "-c" | "command -v \"$1\" >/dev/null 2>&1" | "pluf" | word AS @CONST C1 | NULL ]
- | Result<ExitStatus | IoError> r = (process_run)[ argv ]
- | RET [ (r.is_ok)[] && (r.unwrap)[].exited && (r.unwrap)[].code == 0 ]
- \_
 
 ; `files` opened with `cmd`; `term`: in this terminal, pluf stepped aside
 ; till it ends -- or, in a window, in a new terminal. In `why` what went
@@ -154,9 +87,7 @@ ABYSS open_now: [ @AppData me | @Ui ui ]
  | IF [ (me.pending.size)[] == 0 ]
  |  | RET []
  |  \_
- | String name = (get_dirname)[ ((me.pending.at)[ 0 ].cstr)[] ]
- | @Opener o = (opener_for)[ (name.cstr)[] ]
- | (name.deinit)[]
+ | @Opener o = (rule_for)[ @(CFG.openers) | ((me.pending.at)[ 0 ].cstr)[] ]
  | IF [ o == NULL ]
  |  | (open_run)[ me | ui | OPEN_FALLBACK | FALSE ]
  | ELSE
@@ -164,26 +95,58 @@ ABYSS open_now: [ @AppData me | @Ui ui ]
  |  \_
  \_
 
-; the same, asked first with what: the program it would be, to change
+CONST USIZE MAX_CHOICES = 9
+
+; the same, asked first with what: every rule that fits, in the config's
+; order, then xdg-open -- each once -- to pick from by 1 to 9
 ABYSS open_ask: [ @AppData me ]
  | (strings_clear)[ @(me.pending) ]
  | (main_selection)[ @(me.listing) | @(me.pending) ]
  | IF [ (me.pending.size)[] == 0 ]
  |  | RET []
  |  \_
- | String name = (get_dirname)[ ((me.pending.at)[ 0 ].cstr)[] ]
- | @Opener o = (opener_for)[ (name.cstr)[] ]
- | (name.deinit)[]
- | C1 s{INPUT_CAP}
- | BufferSink b = (BufferSink.over)[ s | INPUT_CAP AS USIZE ]
- | IF [ o == NULL ]
- |  | (b.print)[ "%s" | OPEN_FALLBACK ]
- | ELIF [ o.term ]
- |  | (b.print)[ "term: %s" | (o.cmd.cstr)[] ]
- | ELSE
- |  | (b.print)[ "%s" | (o.cmd.cstr)[] ]
+ | (strings_clear)[ @(me.choices) ]
+ | Vector<@Opener> fits
+ | (rules_for)[ @(CFG.openers) | ((me.pending.at)[ 0 ].cstr)[] | @fits ]
+ | FOR [ USIZE i = 0 | i <= (fits.size)[] && (me.choices.size)[] < MAX_CHOICES | i += 1 ]
+ |  | C1 s{INPUT_CAP}
+ |  | BufferSink b = (BufferSink.over)[ s | INPUT_CAP AS USIZE ]
+ |  | IF [ i == (fits.size)[] ]
+ |  |  | (b.print)[ "%s" | OPEN_FALLBACK ]
+ |  | ELSE
+ |  |  | @Opener o = (fits.get)[ i ]
+ |  |  | (b.print)[ "%s%s" | SELECT [ o.term | "term: " | "" ] | (o.cmd.cstr)[] ]
+ |  |  \_
+ |  | B1 seen = FALSE
+ |  | FOR [ USIZE k = 0 | k < (me.choices.size)[] | k += 1 ]
+ |  |  | seen = seen || ((me.choices.at)[ k ].equals)[ s AS @CONST C1 ]
+ |  |  \_
+ |  | IF [ !seen ]
+ |  |  | (me.choices.push)[ (String.of)[ s AS @CONST C1 ] ]
+ |  |  \_
  |  \_
- | (input_set)[ @(me.field) | s AS @CONST C1 ]
+ | (fits.deinit)[]
+ | me.prompt = PR_CHOOSE
+ \_
+
+; choice `i` of those on offer: opened with it
+ABYSS open_pick: [ @AppData me | @Ui ui | USIZE i ]
+ | IF [ i >= (me.choices.size)[] ]
+ |  | RET []
+ |  \_
+ | C1 s{INPUT_CAP}
+ | (str_copy)[ s | INPUT_CAP AS USIZE | ((me.choices.at)[ i ].cstr)[] ]
+ | (open_typed)[ me | ui | s AS @CONST C1 ]
+ \_
+
+; none of those: a command to type, the first on offer to begin from
+ABYSS open_edit: [ @AppData me ]
+ | ; not SELECT: it would read choice 0 when there is none
+ | IF [ (me.choices.size)[] > 0 ]
+ |  | (input_set)[ @(me.field) | ((me.choices.at)[ 0 ].cstr)[] ]
+ | ELSE
+ |  | (input_set)[ @(me.field) | OPEN_FALLBACK ]
+ |  \_
  | me.prompt = PR_OPEN
  \_
 

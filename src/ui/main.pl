@@ -13,6 +13,7 @@ USE <modular.pl>
 !USES <../core/fs.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
+!USES <../core/sys.pl>
 
 ; the columns, in the order the header has them
 CONST I32 COL_NAME = 0
@@ -48,6 +49,7 @@ TYPE MainPane: STRUCT
  | I32 anchor
  | B1 want_open             ; l, →, Enter on a file: the program opens it
  | B1 sorting               ; s was pressed: n, s, d or r says how
+ | B1 want_menu             ; a right press on a row: its actions are offered
  | String anchor_name       ; the file `anchor` is on: a row moves as the folder
  |                          ;   is read again or sorted, the file does not
  \_
@@ -321,7 +323,7 @@ ABYSS update_main: [ @MainPane p | @CONST C1 cwd ]
  |  | p.cwd = (String.of)[ cwd ]
  |  | (p.name.deinit)[]
  |  | p.name = (folder_name)[ cwd ]
- |  | p.year = (now_utc)[].year
+ |  | p.year = (local_date)[ (unix_time)[] ].year
  |  | ; a filter is for the folder it was typed in
  |  | (p.filter.deinit)[]
  |  | p.filter = (String.of)[ "" ]
@@ -356,7 +358,7 @@ ABYSS update_main: [ @MainPane p | @CONST C1 cwd ]
 
 ; 22 Oct; from another year, the year
 ABYSS date_text: [ @C1 out | I64 when | I64 year ]
- | DateTime d = (date_of_unix)[ when ]
+ | DateTime d = (local_date)[ when ]
  | BufferSink b = (BufferSink.over)[ out | 16 ]
  | IF [ d.year == year ]
  |  | (b.print)[ "%02d %s" | d.day AS I32 | MONTHS{(d.month AS I32) - 1} ]
@@ -518,10 +520,37 @@ ABYSS main_pane: [ @Ui ui | @MainPane p | @CONST C1 cwd | @String go ]
  |  | (ui.subtitle)[]
  |  | ((ui.pen)[ (bold)[ C_MARK ] ].print)[ "-- VISUAL LINE -- %d" | hi - lo + 1 ]
  |  \_
+ | ; the mouse, before the table takes the press: a right one puts the
+ | ; cursor on its row and offers its actions; Shift and a left one chooses
+ | ; from the cursor to that row, as V; a plain one ends a choosing
+ | I32 right = (press_row)[ ui | id | @(p.table.list) | BTN_RIGHT | 1 ]
+ | IF [ right >= 0 && !(ui.used) ]
+ |  | (ui.consume)[]
+ |  | p.table.list.cursor = right
+ |  | (ui.set_focus)[ id ]
+ |  | p.want_menu = TRUE
+ |  \_
+ | IF [ !(ui.used) && (press_row)[ ui | id | @(p.table.list) | BTN_LEFT | 1 ] >= 0 ]
+ |  | IF [ (ui.ev.mods & MOD_SHIFT) != 0 ]
+ |  |  | IF [ !(p.visual) ]
+ |  |  |  | (visual_on)[ p ]
+ |  |  |  \_
+ |  | ELIF [ p.visual && ui.ev.clicks < 2 ]
+ |  |  | (visual_off)[ p ]
+ |  |  \_
+ |  \_
  | (ui.table)[ @(p.table) | id | MAIN_HEADS | p.widths AS @CONST I32 | 3 | n | GROW | GROW ]
  | FOR [ I32 i = 0 | i < n | i += 1 ]
  |  | (main_row)[ ui | p | i | id ]
  |  \_
  | (ui.table_end)[]
  | (ui.close)[]
+ |
+ | ; a double press on a row, its first having put the cursor there: into
+ | ; a folder, a file opened -- as Enter
+ | IF [ (press_row)[ ui | id | @(p.table.list) | BTN_LEFT | 2 ] == p.table.list.cursor ]
+ |  | @CONST FileRecord e = (record_at)[ @(p.files) | p.table.list.cursor ]
+ |  | (ask_go)[ go | GO_IN | cwd | cwd | e ]
+ |  | p.want_open = e != NULL && !(e.dir) && !(e.broken)
+ |  \_
  \_
