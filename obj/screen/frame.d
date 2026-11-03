@@ -90,10 +90,11 @@ obj/screen/frame.o: \
   src/ui/places.pl \
   src/ui/common.pl \
   src/core/fs.pl \
+  src/core/trash.pl \
+  src/core/tasks.pl \
   src/ui/root.pl \
   src/ui/main.pl \
   src/ui/preview.pl \
-  src/core/tasks.pl \
   src/app/app.pl \
   src/screen/bars.pl \
   src/screen/taskbox.pl \
@@ -281,13 +282,15 @@ src/ui/common.pl:
 
 src/core/fs.pl:
 
+src/core/trash.pl:
+
+src/core/tasks.pl:
+
 src/ui/root.pl:
 
 src/ui/main.pl:
 
 src/ui/preview.pl:
-
-src/core/tasks.pl:
 
 src/app/app.pl:
 

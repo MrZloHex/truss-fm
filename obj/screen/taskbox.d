@@ -90,6 +90,7 @@ obj/screen/taskbox.o: \
   src/core/tasks.pl \
   src/core/fs.pl \
   src/app/app.pl \
+  src/core/trash.pl \
   src/ui/places.pl \
   src/ui/common.pl \
   src/ui/root.pl \
@@ -277,6 +278,8 @@ src/core/tasks.pl:
 src/core/fs.pl:
 
 src/app/app.pl:
+
+src/core/trash.pl:
 
 src/ui/places.pl:
 

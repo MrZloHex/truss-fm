@@ -63,7 +63,7 @@ ABYSS root_pane: [ @Ui ui | @RootPane p | @CONST C1 cwd | @String go ]
  | I32 n = (p.files.size)[] AS I32
  |
  | IF [ (ui.focused)[ id ] ]
- |  | (move_keys)[ ui | @(p.list.cursor) ]
+ |  | (move_keys)[ ui | @(p.list) ]
  |  | I32 how = (go_keys)[ ui ]
  |  | @CONST FileRecord e = (record_at)[ @(p.files) | p.list.cursor ]
  |  | (ask_go)[ go | how | cwd | (p.dir.cstr)[] | e ]

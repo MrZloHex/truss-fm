@@ -29,6 +29,22 @@ ABYSS keys_first: [ @Ui ui | @App a ]
  |  | (ui.redo)[]
  |  \_
  |
+ | ; names a paste finds taken: o overwrites, s skips them, k keeps both;
+ | ; anything else gives the paste up
+ | IF [ a.prompt == PR_CLASH && (ui.key)[] != 0 ]
+ |  | IF [ (ui.take)[ 'o' AS U32 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_OVER ]
+ |  | ELIF [ (ui.take)[ 's' AS U32 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_SKIP ]
+ |  | ELIF [ (ui.take)[ 'k' AS U32 ] ]
+ |  |  | (file_paste_as)[ a | CLASH_KEEP ]
+ |  | ELSE
+ |  |  | (ui.consume)[]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.redo)[]
+ |  \_
+ |
  | ; the delete question takes every key, before the columns can see one:
  | ; nothing moves under it. y deletes, anything else keeps
  | IF [ a.prompt == PR_DELETE && (ui.key)[] != 0 ]
@@ -47,6 +63,24 @@ ABYSS keys_first: [ @Ui ui | @App a ]
 ; after: a prompt open takes the keys, Esc gives it up. TRUE: one is open,
 ; nothing else is done this frame
 B1 keys_prompt: [ @Ui ui | @App a ]
+ | ; the filter being typed: ↑ ↓ move in what it lets through; Esc clears it
+ | IF [ a.prompt == PR_FILTER ]
+ |  | @ListState l = @(a.listing.table.list)
+ |  | IF [ (ui.take)[ KEY_DOWN ] && l.cursor + 1 < l.count ]
+ |  |  | l.cursor += 1
+ |  |  | (ui.redo)[]
+ |  | ELIF [ (ui.take)[ KEY_UP ] && l.cursor > 0 ]
+ |  |  | l.cursor -= 1
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | IF [ (ui.take)[ KEY_ESC ] ]
+ |  |  | (main_filter)[ @(a.listing) | "" ]
+ |  |  | a.prompt = PR_NONE
+ |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | RET [ TRUE ]
+ |  \_
  | IF [ a.prompt != PR_NONE ]
  |  | IF [ (ui.take)[ KEY_ESC ] ]
  |  |  | a.prompt = PR_NONE
@@ -69,7 +103,11 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  | ELIF [ (ui.shortcut)[ "p" ] ]
  |  | (file_paste)[ a ]
  | ELIF [ (ui.shortcut)[ "D" ] || (ui.take)[ KEY_DELETE ] ]
+ |  | (file_trash)[ a ]
+ | ELIF [ (ui.shortcut)[ "X" ] ]
  |  | (file_ask_delete)[ a ]
+ | ELIF [ (ui.shortcut)[ "u" ] ]
+ |  | (file_untrash)[ a ]
  | ELIF [ (ui.shortcut)[ "r" ] ]
  |  | (file_ask_rename)[ a ]
  | ELIF [ (ui.shortcut)[ "n" ] ]
@@ -78,14 +116,21 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  |  | (open_ask)[ a ]
  | ELIF [ a.listing.want_open || a.preview.want_open ]
  |  | (open_now)[ a | ui ]
+ | ELIF [ (ui.shortcut)[ "/" ] ]
+ |  | (input_set)[ @(a.filter_field) | (a.listing.filter.cstr)[] ]
+ |  | a.prompt = PR_FILTER
  | ELIF [ a.listing.visual && (ui.take)[ KEY_ESC ] ]
  |  | (visual_off)[ @(a.listing) ]
+ | ELIF [ (a.listing.filter.size)[] > 0 && (ui.take)[ KEY_ESC ] ]
+ |  | (main_filter)[ @(a.listing) | "" ]
  | ELSE
  |  | did = FALSE
  |  \_
  | IF [ did ]
  |  | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_OPEN ]
  |  |  | (ui.set_focus)[ (ui.id)[ "prompt" ] ]
+ |  | ELIF [ a.prompt == PR_FILTER ]
+ |  |  | (ui.set_focus)[ (ui.id)[ "filter" ] ]
  |  |  \_
  |  | (ui.redo)[]
  |  \_

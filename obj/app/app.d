@@ -87,6 +87,7 @@ obj/app/app.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
   src/core/fs.pl \
   src/core/tasks.pl \
+  src/core/trash.pl \
   src/core/config.pl \
   src/ui/places.pl \
   src/ui/common.pl \
@@ -268,6 +269,8 @@ obj/app/app.o: \
 src/core/fs.pl:
 
 src/core/tasks.pl:
+
+src/core/trash.pl:
 
 src/core/config.pl:
 

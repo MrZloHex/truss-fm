@@ -16,8 +16,10 @@ USE <modular.pl>
 !USES <../core/fs.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
+!USES <../core/trash.pl>
 
-CONST I32 PLACE_NAME_W = 14     ; the name; its key or its disk's use after it
+CONST I32 PLACE_USE_W = 4       ; a disk's use against the right border: 100%
+CONST I32 PLACE_KEY_W = 1       ; or a place's key
 CONST USIZE PLACE_LINE = 4096
 CONST U64 MOUNTS_MS = 2000      ; how often the mounts are looked at
 
@@ -235,6 +237,11 @@ ABYSS standard_read: [ @Vector<Place> v | @CONST C1 home ]
  |  |  \_
  |  \_
  | (place_dir)[ v | "/ root" | "/" | "/" | home ]
+ | C1 bin{PLACE_LINE}
+ | (trash_home)[ bin | PLACE_LINE ]
+ | BufferSink tb = (BufferSink.over)[ bin + (str_len)[ bin AS @CONST C1 ] | PLACE_LINE - (str_len)[ bin AS @CONST C1 ] ]
+ | (tb.print)[ "/files" ]
+ | (place_dir)[ v | "Trash" | bin AS @CONST C1 | "t" | home ]
  \_
 
 ; a disk that udisks (udiskie, a desktop) mounted: under /run/media/<user>/
@@ -365,6 +372,13 @@ ABYSS place_skip: [ @PlacesPane p | I32 was ]
  | WHILE [ p.list.cursor >= 0 && p.list.cursor < n && (p.rows.at)[ p.list.cursor AS USIZE ].kind != PK_PLACE ]
  |  | p.list.cursor += step
  |  \_
+ | ; none that way -- gg onto the first heading: the other way, from there
+ | IF [ p.list.cursor < 0 || p.list.cursor >= n ]
+ |  | p.list.cursor = SELECT [ p.list.cursor < 0 | 0 | n - 1 ]
+ |  | WHILE [ p.list.cursor >= 0 && p.list.cursor < n && (p.rows.at)[ p.list.cursor AS USIZE ].kind != PK_PLACE ]
+ |  |  | p.list.cursor -= step
+ |  |  \_
+ |  \_
  | IF [ p.list.cursor < 0 || p.list.cursor >= n ]
  |  | p.list.cursor = was
  |  \_
@@ -417,11 +431,14 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  | (jump_keys)[ ui | p | go ]
  |
  | U32 id = (ui.id)[ "places" ]
+ | ; a name takes what its key or its disk's use leaves, as wide as the
+ | ; column was the last frame; the key or the use at the right border
+ | I32 inner = (ui.rect_of)[ id ].w - 1 - BAR_W
  | I32 n = (p.rows.size)[] AS I32
  | I32 here = (place_of)[ p | cwd ]
  | I32 was = p.list.cursor
  | IF [ (ui.focused)[ id ] ]
- |  | (move_keys)[ ui | @(p.list.cursor) ]
+ |  | (move_keys)[ ui | @(p.list) ]
  |  \_
  |
  | (ui.box)[ "" | (pct)[ CFG.places_width ] | GROW ]
@@ -437,12 +454,17 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  | @Place r = (p.rows.at)[ i AS USIZE ]
  |  | IF [ r.kind == PK_PLACE ]
  |  |  | (ui.list_row)[ @(p.list) | i | id ]
- |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == here | AMBER | TEXT ] ] | (r.name.cstr)[] | PLACE_NAME_W - 1 | TRUE ]
+ |  |  | I32 side = SELECT [ r.used >= 0 | PLACE_USE_W | PLACE_KEY_W ]
+ |  |  | I32 name_w = SELECT [ inner - side < NAME_MIN | NAME_MIN | inner - side ]
+ |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == here | AMBER | TEXT ] ] | (r.name.cstr)[] | name_w | TRUE ]
  |  |  | (ui.put)[ (fg)[ DIM ] | " " ]
  |  |  | IF [ r.used >= 0 ]
- |  |  |  | ((ui.pen)[ (fg)[ SELECT [ r.used >= DISK_FULL | ORANGE | DIM ] ] ].print)[ "%3d%%" | r.used ]
+ |  |  |  | C1 use{8}
+ |  |  |  | BufferSink b = (BufferSink.over)[ use | 8 ]
+ |  |  |  | (b.print)[ "%d%%" | r.used ]
+ |  |  |  | (ui.put_cell)[ (fg)[ SELECT [ r.used >= DISK_FULL | ORANGE | DIM ] ] | use AS @CONST C1 | PLACE_USE_W | FALSE ]
  |  |  | ELSE
- |  |  |  | (ui.put)[ (fg)[ DIM ] | (r.key.cstr)[] ]
+ |  |  |  | (ui.put_cell)[ (fg)[ DIM ] | (r.key.cstr)[] | PLACE_KEY_W | FALSE ]
  |  |  |  \_
  |  | ELSE
  |  |  | (ui.text)[ GROW | 1 ]

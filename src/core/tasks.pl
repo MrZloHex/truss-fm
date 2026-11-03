@@ -47,6 +47,11 @@ I32 px_symlink: [ @CONST C1 target | @CONST C1 path ]
 I32 px_utimensat: [ I32 dirfd | @CONST C1 path | @CONST Timespec times | I32 flags ]
  + SYMBOL "utimensat"
 
+; what a paste does with a name taken where it goes
+CONST I32 CLASH_KEEP = 0        ; keep both: the new one as "name (2)"
+CONST I32 CLASH_SKIP = 1        ; leave that one out
+CONST I32 CLASH_OVER = 2        ; overwrite: a file replaced, a folder merged into
+
 TYPE TaskKind: ENUM
  | TK_COPY
  | TK_MOVE
@@ -92,11 +97,14 @@ TYPE Task: STRUCT
  | I64 src_sec              ; the file being copied: its time and mode, for
  | U32 src_nsec             ;   the copy once it is whole
  | U32 src_mode
+ | B1 over                  ; a name taken is overwritten, not a failure
+ | String replace           ; the file `target` is written aside for: renamed
+ |                          ;   over it once whole; empty: none
  \_
 
 ; --- paths ----------------------------------------------------------------------
 
-LOCAL B1 taken: [ @CONST C1 path ]
+B1 taken: [ @CONST C1 path ]
  | RET [ ((fs_link_info)[ path ].is_ok)[] ]
  \_
 
@@ -154,6 +162,7 @@ Task task_new: [ TaskKind k ]
  | t.target = (String.of)[ "" ]
  | t.now = (String.of)[ "" ]
  | t.error = (String.of)[ "" ]
+ | t.replace = (String.of)[ "" ]
  | t.in = -1
  | t.out = -1
  | RET [ t ]
@@ -172,6 +181,7 @@ ABYSS task_free: [ @Task t ]
  | (t.target.deinit)[]
  | (t.now.deinit)[]
  | (t.error.deinit)[]
+ | (t.replace.deinit)[]
  \_
 
 ABYSS task_title: [ @Task t | @CONST C1 verb | USIZE n | @CONST C1 one | @CONST C1 into ]
@@ -193,10 +203,12 @@ ABYSS task_title: [ @Task t | @CONST C1 verb | USIZE n | @CONST C1 one | @CONST 
  | t.title = (String.of)[ s AS @CONST C1 ]
  \_
 
-; `paths` copied, or moved, into the folder `into`. A path moved to where it
-; is already is left as it is; copied there, it is copied as "name (2)"
-Task task_transfer: [ B1 move | @Vector<String> paths | @CONST C1 into ]
+; `paths` copied, or moved, into the folder `into`; a name taken there as
+; `clash` says. A path moved to where it is already is left as it is;
+; copied there, it is copied as "name (2)"
+Task task_transfer: [ B1 move | @Vector<String> paths | @CONST C1 into | I32 clash ]
  | Task t = (task_new)[ SELECT [ move | TK_MOVE | TK_COPY ] ]
+ | t.over = clash == CLASH_OVER
  | USIZE n = (paths.size)[]
  | @CONST C1 one = ""
  | IF [ n > 0 ]
@@ -213,7 +225,17 @@ Task task_transfer: [ B1 move | @Vector<String> paths | @CONST C1 into ]
  |  |  | CONTINUE
  |  |  \_
  |  | String name = (get_dirname)[ src ]
- |  | String dst = (free_name)[ into | (name.cstr)[] ]
+ |  | ; a name taken here: as `clash` says -- but a copy into its own
+ |  | ; folder is always kept beside the original
+ |  | String dst = (join_path)[ into | (name.cstr)[] ]
+ |  | IF [ (taken)[ (dst.cstr)[] ] && (here || clash == CLASH_KEEP) ]
+ |  |  | (dst.deinit)[]
+ |  |  | dst = (free_name)[ into | (name.cstr)[] ]
+ |  | ELIF [ (taken)[ (dst.cstr)[] ] && clash == CLASH_SKIP ]
+ |  |  | (name.deinit)[]
+ |  |  | (dst.deinit)[]
+ |  |  | CONTINUE
+ |  |  \_
  |  | IF [ move ]
  |  |  | ; a rename, as a rule: one unit, and no walk of what it holds
  |  |  | (step_push)[ @t | SK_MOVE | src | (dst.cstr)[] | ENTRY_WEIGHT ]
@@ -293,6 +315,16 @@ ABYSS copy_end: [ @Task t | B1 bad ]
  |  \_
  | (px_chmod)[ (t.target.cstr)[] | t.src_mode ]
  | (set_time)[ (t.target.cstr)[] | t.src_sec | t.src_nsec ]
+ | ; written aside of a file it overwrites: over it now, in one rename
+ | IF [ (t.replace.size)[] > 0 ]
+ |  | Result<B1 | IoError> r = (fs_rename)[ (t.target.cstr)[] | (t.replace.cstr)[] ]
+ |  | IF [ (r.is_err)[] ]
+ |  |  | (task_fail_io)[ t | (t.replace.cstr)[] | (r.error)[] ]
+ |  |  | (fs_remove)[ (t.target.cstr)[] ]
+ |  |  \_
+ |  | (t.replace.deinit)[]
+ |  | t.replace = (String.of)[ "" ]
+ |  \_
  \_
 
 ; a chunk of the file being copied; a call a signal broke off is made again
@@ -387,9 +419,36 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  |  | RET []
  |  \_
  | FileInfo i = (r.unwrap)[]
- | IF [ (taken)[ dst ] ]
- |  | (task_fail)[ t | dst | "there already" ]
- |  | RET []
+ |
+ | ; there already: overwritten only if the paste said so -- a folder merged
+ | ; into its namesake; a file or a link written aside, and renamed over it
+ | ; only once it is whole, so a copy that fails leaves the old one be
+ | @CONST C1 put = dst
+ | String aside = (String.of)[ "" ]
+ | POSTLUDE (aside.deinit)[]
+ | B1 merge = FALSE
+ | Result<FileInfo | IoError> there = (fs_link_info)[ dst ]
+ | IF [ (there.is_ok)[] ]
+ |  | IF [ !(t.over) ]
+ |  |  | (task_fail)[ t | dst | "there already" ]
+ |  |  | RET []
+ |  |  \_
+ |  | B1 was_dir = (there.unwrap)[].kind == FS_DIR
+ |  | IF [ was_dir != (i.kind == FS_DIR) ]
+ |  |  | (task_fail)[ t | dst | "a file and a folder have this name" ]
+ |  |  | RET []
+ |  |  \_
+ |  | merge = was_dir
+ |  | IF [ !merge ]
+ |  |  | String up = (get_parent_path)[ dst ]
+ |  |  | String part = (get_dirname)[ dst ]
+ |  |  | (part.append)[ ".pluf-part" ]
+ |  |  | (aside.deinit)[]
+ |  |  | aside = (free_name)[ (up.cstr)[] | (part.cstr)[] ]
+ |  |  | (up.deinit)[]
+ |  |  | (part.deinit)[]
+ |  |  | put = (aside.cstr)[]
+ |  |  \_
  |  \_
  |
  | IF [ i.kind == FS_LINK ]
@@ -400,9 +459,13 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  |  |  | RET []
  |  |  \_
  |  | to{n} = '\0'
- |  | IF [ (px_symlink)[ to AS @CONST C1 | dst ] != 0 ]
+ |  | IF [ (px_symlink)[ to AS @CONST C1 | put ] != 0 ]
  |  |  | (task_fail)[ t | dst | (errno_text)[] ]
  |  |  | RET []
+ |  |  \_
+ |  | IF [ (aside.size)[] > 0 && ((fs_rename)[ put | dst ].is_err)[] ]
+ |  |  | (task_fail)[ t | dst | (errno_text)[] ]
+ |  |  | (fs_remove)[ put ]
  |  |  \_
  |  | t.done += ENTRY_WEIGHT
  |  | RET []
@@ -413,10 +476,12 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  |  |  | (task_fail)[ t | src | "a folder cannot go into itself" ]
  |  |  | RET []
  |  |  \_
- |  | Result<B1 | IoError> m = (fs_make_dir)[ dst ]
- |  | IF [ (m.is_err)[] ]
- |  |  | (task_fail_io)[ t | dst | (m.error)[] ]
- |  |  | RET []
+ |  | IF [ !merge ]
+ |  |  | Result<B1 | IoError> m = (fs_make_dir)[ dst ]
+ |  |  | IF [ (m.is_err)[] ]
+ |  |  |  | (task_fail_io)[ t | dst | (m.error)[] ]
+ |  |  |  | RET []
+ |  |  |  \_
  |  |  \_
  |  | ; writable while its entries go in; its own mode and time after them
  |  | (px_chmod)[ dst | ((i.mode & 0xFFF) | 0x1C0) ]
@@ -439,9 +504,9 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  |  | (task_fail)[ t | src | (errno_text)[] ]
  |  | RET []
  |  \_
- | I32 fout = (px_open)[ dst | O_MAKE | ((i.mode & 0xFFF) | 0x180) ]
+ | I32 fout = (px_open)[ put | O_MAKE | ((i.mode & 0xFFF) | 0x180) ]
  | IF [ fout < 0 ]
- |  | (task_fail)[ t | dst | (errno_text)[] ]
+ |  | (task_fail)[ t | put | (errno_text)[] ]
  |  | (px_close)[ fin ]
  |  | RET []
  |  \_
@@ -451,19 +516,44 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  | t.src_nsec = i.modified_ns
  | t.src_mode = i.mode & 0xFFF
  | (t.target.deinit)[]
- | t.target = (String.of)[ dst ]
+ | t.target = (String.of)[ put ]
+ | (t.replace.deinit)[]
+ | t.replace = (String.of)[ SELECT [ (aside.size)[] > 0 | dst | "" ] ]
  | t.done += ENTRY_WEIGHT
  \_
 
 ABYSS do_move: [ @Task t | @CONST C1 src | @CONST C1 dst | U64 weight ]
  | (task_now)[ t | src ]
- | IF [ (taken)[ dst ] ]
- |  | (task_fail)[ t | dst | "there already" ]
- |  | RET []
- |  \_
  | IF [ (is_under)[ dst | src ] ]
  |  | (task_fail)[ t | src | "a folder cannot go into itself" ]
  |  | RET []
+ |  \_
+ | ; there already, and to be overwritten: a file renamed over it, as a
+ | ; rename does; a folder copied into it, merged, and then taken away
+ | Result<FileInfo | IoError> there = (fs_link_info)[ dst ]
+ | IF [ (there.is_ok)[] ]
+ |  | IF [ !(t.over) ]
+ |  |  | (task_fail)[ t | dst | "there already" ]
+ |  |  | RET []
+ |  |  \_
+ |  | Result<FileInfo | IoError> me = (fs_link_info)[ src ]
+ |  | IF [ (me.is_err)[] ]
+ |  |  | (task_fail_io)[ t | src | (me.error)[] ]
+ |  |  | RET []
+ |  |  \_
+ |  | B1 was_dir = (there.unwrap)[].kind == FS_DIR
+ |  | IF [ was_dir != ((me.unwrap)[].kind == FS_DIR) ]
+ |  |  | (task_fail)[ t | dst | "a file and a folder have this name" ]
+ |  |  | RET []
+ |  |  \_
+ |  | IF [ was_dir ]
+ |  |  | t.done += weight
+ |  |  | I32 was = t.failed
+ |  |  | (step_push)[ t | SK_DROP | src | "" | was AS U64 ]
+ |  |  | (step_push)[ t | SK_COPY | src | dst | 0 ]
+ |  |  | (step_push)[ t | SK_WEIGH | src | "" | 0 ]
+ |  |  | RET []
+ |  |  \_
  |  \_
  | Result<B1 | IoError> r = (fs_rename)[ src | dst ]
  | IF [ (r.is_ok)[] ]

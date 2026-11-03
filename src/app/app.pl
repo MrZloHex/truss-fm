@@ -10,6 +10,7 @@ USE <modular.pl>
 
 !USES <../core/fs.pl>
 !USES <../core/tasks.pl>
+!USES <../core/trash.pl>
 !USES <../core/config.pl>
 !USES <../ui/places.pl>
 !USES <../ui/root.pl>
@@ -33,6 +34,8 @@ TYPE Prompt: ENUM
  | PR_MKDIR         ; a name for a new folder here
  | PR_DELETE        ; y or n, for `pending`
  | PR_OPEN          ; a command to open `pending` with
+ | PR_CLASH         ; o, s or k: what the paste does with names taken here
+ | PR_FILTER        ; letters typed into the path bar: the main column narrows
  \_
 
 TYPE Tab: STRUCT
@@ -57,8 +60,13 @@ TYPE AppData: STRUCT
  |
  | Prompt prompt
  | InputState field         ; what is typed for it
+ | InputState filter_field  ; and for the filter, in the path bar
  | String renaming          ; PR_RENAME: the full path
  | Vector<String> pending   ; PR_DELETE: what goes
+ | Vector<String> undo_from ; the last batch put in the trash: where each was,
+ | Vector<String> undo_put  ;   and where it went -- u puts them back
+ | I32 clashes              ; PR_CLASH: how many names the paste finds taken
+ | String clash_one         ;   the first of them
  | String note              ; a word at the bottom: done, or what failed
  | U64 note_at              ; now_ms it was said
  |
@@ -92,6 +100,9 @@ ABYSS app_enter: [ @AppData a | String cwd ]
  | a.cwd = cwd
  | a.rel_cwd = (get_shorter_path)[ (cwd.cstr)[] ]
  | a.partition = (partition_of)[ (cwd.cstr)[] ]
+ | ; a filter is for the folder it was typed in
+ | (a.listing.filter.deinit)[]
+ | a.listing.filter = (String.of)[ "" ]
  |
  | @Tab t = (a.tabs.at)[ a.tab AS USIZE ]
  | (t.cwd.deinit)[]
@@ -273,7 +284,12 @@ IFACE AppOps: [ @AppData me ]
  |  | (me.clip.deinit)[]
  |  | (strings_clear)[ @(me.pending) ]
  |  | (me.pending.deinit)[]
+ |  | (strings_clear)[ @(me.undo_from) ]
+ |  | (me.undo_from.deinit)[]
+ |  | (strings_clear)[ @(me.undo_put) ]
+ |  | (me.undo_put.deinit)[]
  |  | (me.renaming.deinit)[]
+ |  | (me.clash_one.deinit)[]
  |  | (me.note.deinit)[]
  |  \_
  |

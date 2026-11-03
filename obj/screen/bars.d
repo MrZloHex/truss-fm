@@ -90,6 +90,7 @@ obj/screen/bars.o: \
   src/app/app.pl \
   src/core/fs.pl \
   src/core/tasks.pl \
+  src/core/trash.pl \
   src/ui/places.pl \
   src/ui/common.pl \
   src/ui/root.pl \
@@ -275,6 +276,8 @@ src/app/app.pl:
 src/core/fs.pl:
 
 src/core/tasks.pl:
+
+src/core/trash.pl:
 
 src/ui/places.pl:
 

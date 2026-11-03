@@ -60,7 +60,7 @@ ABYSS top_bar: [ @Ui ui | @App a | @I32 want ]
  | (ui.close)[]
  \_
 
-CONST @CONST C1 PATH_HINTS = "['] jump · [b] bookmark · [.] hidden · [~] home"
+CONST @CONST C1 PATH_HINTS = "[/] filter · ['] jump · [b] bookmark · [.] hidden · [~] home"
 
 ; > the path, what is in the clipboard, a note, and at the far end the keys
 ; -- those left out first when the line is too short for all
@@ -74,8 +74,13 @@ ABYSS path_bar: [ @Ui ui | @App a ]
  | IF [ noting ]
  |  | (st.print)[ "   %s" | (a.note.cstr)[] ]
  |  \_
+ | B1 typing = a.prompt == PR_FILTER
+ | B1 filtered = (a.listing.filter.size)[] > 0
  | I32 used = 3 + (cells)[ (a.rel_cwd.cstr)[] ] + SELECT [ a.places.jump | 4 | 0 ] + (cells)[ status AS @CONST C1 ]
- | B1 hints = used + 4 + (cells)[ PATH_HINTS ] + 1 <= ui.cols
+ | IF [ filtered ]
+ |  | used += 16 + (cells)[ (a.listing.filter.cstr)[] ]
+ |  \_
+ | B1 hints = !typing && used + 4 + (cells)[ PATH_HINTS ] + 1 <= ui.cols
  |
  | @Node bar = (ui.row)[ GROW | 1 ]
  | (bar.spacing)[ 1 ]
@@ -85,6 +90,25 @@ ABYSS path_bar: [ @Ui ui | @App a ]
  | (ui.put)[ (fg)[ TEXT ] | (a.rel_cwd.cstr)[] ]
  | IF [ a.places.jump ]
  |  | (ui.put)[ (bold)[ AMBER ] | "  '_" ]
+ |  \_
+ | ; the filter: typed here, or kept, with how to give it up
+ | IF [ typing ]
+ |  | (ui.put)[ (bold)[ C_MATCH ] | "   / " ]
+ |  | I32 got = (ui.input)[ @(a.filter_field) | (ui.id)[ "filter" ] | 24 | "filter" ]
+ |  | IF [ got == IN_CHANGED ]
+ |  |  | (main_filter)[ @(a.listing) | (input_text)[ @(a.filter_field) ] ]
+ |  |  | (ui.redo)[]
+ |  | ELIF [ got == IN_SUBMIT ]
+ |  |  | a.prompt = PR_NONE
+ |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | (ui.text)[ FIT | 1 ]
+ |  | (ui.put)[ (fg)[ DIM ] | " [enter] keep · [esc] clear · [↑↓] move" ]
+ | ELIF [ filtered ]
+ |  | (ui.put)[ (bold)[ C_MATCH ] | "   /" ]
+ |  | (ui.put)[ (bold)[ C_MATCH ] | (a.listing.filter.cstr)[] ]
+ |  | (ui.put)[ (fg)[ DIM ] | "  [esc] clear" ]
  |  \_
  | IF [ (a.clip.size)[] > 0 ]
  |  | ((ui.pen)[ (fg)[ DIM ] ].print)[ "   clipboard: %d %s" | (a.clip.size)[] AS I32 | SELECT [ a.clip_cut | "to move" | "to copy" ] ]
@@ -104,8 +128,8 @@ ABYSS path_bar: [ @Ui ui | @App a ]
  \_
 
 ; the keys, the most wanted first: as many as the line holds
-CONST @CONST C1 HOT_KEYS{} = [ "[hjkl]" | "[o]" | "[V]" | "[y]" | "[d]" | "[p]" | "[D]" | "[r]" | "[n]" | "[1-9]" | "[t]" | "[x]" | "[q]" ]
-CONST @CONST C1 HOT_WHAT{} = [ " move, open" | " open with" | " select" | " copy" | " cut" | " paste" | " delete" | " rename" | " new folder" | " tab" | " new tab" | " close tab" | " quit" ]
+CONST @CONST C1 HOT_KEYS{} = [ "[hjkl]" | "[o]" | "[V]" | "[y]" | "[d]" | "[p]" | "[D]" | "[u]" | "[X]" | "[r]" | "[n]" | "[1-9]" | "[t]" | "[x]" | "[q]" ]
+CONST @CONST C1 HOT_WHAT{} = [ " move, open" | " open with" | " select" | " copy" | " cut" | " paste" | " trash" | " untrash" | " delete" | " rename" | " new folder" | " tab" | " new tab" | " close tab" | " quit" ]
 CONST I32 NHOT = COUNT [ HOT_KEYS ]
 CONST I32 HOT_GAP = 3
 

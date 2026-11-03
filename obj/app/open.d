@@ -89,6 +89,7 @@ obj/app/open.o: \
   src/app/app.pl \
   src/core/fs.pl \
   src/core/tasks.pl \
+  src/core/trash.pl \
   src/ui/places.pl \
   src/ui/common.pl \
   src/ui/look.pl \
@@ -273,6 +274,8 @@ src/app/app.pl:
 src/core/fs.pl:
 
 src/core/tasks.pl:
+
+src/core/trash.pl:
 
 src/ui/places.pl:
 

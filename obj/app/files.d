@@ -88,6 +88,7 @@ obj/app/files.o: \
   src/app/app.pl \
   src/core/fs.pl \
   src/core/tasks.pl \
+  src/core/trash.pl \
   src/core/config.pl \
   src/ui/places.pl \
   src/ui/common.pl \
@@ -271,6 +272,8 @@ src/app/app.pl:
 src/core/fs.pl:
 
 src/core/tasks.pl:
+
+src/core/trash.pl:
 
 src/core/config.pl:
 

@@ -132,12 +132,44 @@ CONST I32 GO_NONE = 0
 CONST I32 GO_IN = 1         ; l, →, Enter: into the folder
 CONST I32 GO_UP = 2         ; h, ←, Backspace: up a folder
 
-; j and k move the cursor, as the arrows do in the list itself
-ABYSS move_keys: [ @Ui ui | @I32 cursor ]
+; g was pressed: the next g goes to the top
+LOCAL B1 g_armed
+
+; j and k move the cursor, as the arrows do in the list itself (which also
+; has PgUp, PgDn, Home, End); gg the top, G the bottom; Ctrl-d and Ctrl-u
+; half a page, Ctrl-f and Ctrl-b a page. The list keeps the cursor in it
+ABYSS move_keys: [ @Ui ui | @ListState st ]
+ | I32 page = SELECT [ st.sc.view > 1 | st.sc.view - 1 | 10 ]
+ | ; a frame with no key -- a wake, a redraw -- leaves the g armed
+ | IF [ g_armed && (ui.key)[] != 0 ]
+ |  | g_armed = FALSE
+ |  | IF [ (ui.take)[ 'g' AS U32 ] ]
+ |  |  | st.cursor = 0
+ |  |  | RET []
+ |  |  \_
+ |  \_
  | IF [ (ui.take)[ 'j' AS U32 ] ]
- |  | ?cursor += 1
+ |  | st.cursor += 1
  | ELIF [ (ui.take)[ 'k' AS U32 ] ]
- |  | ?cursor -= 1
+ |  | st.cursor -= 1
+ | ELIF [ (ui.take)[ 'g' AS U32 ] ]
+ |  | g_armed = TRUE
+ | ELIF [ (ui.take)[ 'G' AS U32 ] ]
+ |  | st.cursor = st.count - 1
+ | ELIF [ (ui.take_ctrl)[ 'd' AS U32 ] ]
+ |  | st.cursor += page / 2
+ | ELIF [ (ui.take_ctrl)[ 'u' AS U32 ] ]
+ |  | st.cursor -= page / 2
+ | ELIF [ (ui.take_ctrl)[ 'f' AS U32 ] ]
+ |  | st.cursor += page
+ | ELIF [ (ui.take_ctrl)[ 'b' AS U32 ] ]
+ |  | st.cursor -= page
+ |  \_
+ | IF [ st.cursor >= st.count ]
+ |  | st.cursor = st.count - 1
+ |  \_
+ | IF [ st.cursor < 0 ]
+ |  | st.cursor = 0
  |  \_
  \_
 

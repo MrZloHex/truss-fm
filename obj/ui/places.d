@@ -88,7 +88,9 @@ obj/ui/places.o: \
   src/ui/common.pl \
   src/core/fs.pl \
   src/ui/look.pl \
-  src/core/config.pl
+  src/core/config.pl \
+  src/core/trash.pl \
+  src/core/tasks.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -267,3 +269,7 @@ src/core/fs.pl:
 src/ui/look.pl:
 
 src/core/config.pl:
+
+src/core/trash.pl:
+
+src/core/tasks.pl:

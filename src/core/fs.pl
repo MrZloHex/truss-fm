@@ -180,6 +180,36 @@ Option<String> get_phy_part_name: [ @CONST C1 cwd ]
  | RET [ (Option<String>.some)[(String.of)[source]] ]
  \_
 
+; where the file system `path` is on is mounted, in `out`: / for /home/x
+; when /home is no mount of its own. FALSE: it cannot be told
+B1 mount_point_of: [ @CONST C1 path | @C1 out | USIZE cap ]
+ | String mounts
+ | POSTLUDE (mounts.deinit)[]
+ | IF [ ((read_file)[ "/proc/self/mountinfo" | @mounts ].is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | Result<FileInfo | IoError> info = (fs_info)[ path ]
+ | IF [ (info.is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | FileInfo i = (info.unwrap)[]
+ | C1 dev{32}
+ | USIZE n = (fmt_u64)[ dev | i.dev_major AS U64 | 10 ]
+ | dev{n} = ':'
+ | n += 1
+ | n += (fmt_u64)[ dev + n | i.dev_minor AS U64 | 10 ]
+ | dev{n} = '\0'
+ | C1 source{WORD}
+ | C1 mount{WORD}
+ | C1 fstype{WORD}
+ | IF [ !((find_mount)[ (mounts.cstr)[] | dev | source | mount | fstype ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | (unescape)[ mount ]
+ | (str_copy)[ out | cap | mount AS @CONST C1 ]
+ | RET [ TRUE ]
+ \_
+
 Option<F32> get_phy_part_usage: [ @CONST C1 cwd ]
  | Result<FsSpace | IoError> room = (fs_space)[ cwd ]
  | IF [ (room.is_err)[] ]

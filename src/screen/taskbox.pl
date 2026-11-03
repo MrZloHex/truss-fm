@@ -87,6 +87,22 @@ ABYSS task_status: [ @Ui ui | @App a ]
  |  | RET []
  |  \_
  |
+ | IF [ a.prompt == PR_CLASH ]
+ |  | (ui.text)[ GROW | 1 ]
+ |  | IF [ a.clashes == 1 ]
+ |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " %s is here already: " | (a.clash_one.cstr)[] ]
+ |  | ELSE
+ |  |  | ((ui.pen)[ (bold)[ AMBER ] ].print)[ " %d names are taken here: " | a.clashes ]
+ |  |  \_
+ |  | (ui.put)[ (fg)[ AMBER ] | "[o]" ]
+ |  | (ui.put)[ (fg)[ TEXT ] | " overwrite   " ]
+ |  | (ui.put)[ (fg)[ AMBER ] | "[s]" ]
+ |  | (ui.put)[ (fg)[ TEXT ] | " skip   " ]
+ |  | (ui.put)[ (fg)[ AMBER ] | "[k]" ]
+ |  | (ui.put)[ (fg)[ TEXT ] | " keep both   " ]
+ |  | (ui.put)[ (fg)[ DIM ] | "any other key cancels" ]
+ |  | RET []
+ |  \_
  | IF [ a.prompt != PR_DELETE ]
  |  | RET []
  |  \_
@@ -112,7 +128,7 @@ ABYSS task_status: [ @Ui ui | @App a ]
 ; only while there is a task, or a question to ask
 ABYSS tasks_bar: [ @Ui ui | @App a ]
  | USIZE n = (a.tasks.size)[]
- | B1 asking = a.prompt != PR_NONE
+ | B1 asking = a.prompt != PR_NONE && a.prompt != PR_FILTER
  | IF [ n == 0 && !asking ]
  |  | RET []
  |  \_

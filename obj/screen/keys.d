@@ -90,9 +90,10 @@ obj/screen/keys.o: \
   src/ui/common.pl \
   src/core/fs.pl \
   src/ui/look.pl \
+  src/core/trash.pl \
+  src/core/tasks.pl \
   src/ui/main.pl \
   src/app/app.pl \
-  src/core/tasks.pl \
   src/ui/root.pl \
   src/ui/preview.pl \
   src/app/files.pl \
@@ -278,11 +279,13 @@ src/core/fs.pl:
 
 src/ui/look.pl:
 
+src/core/trash.pl:
+
+src/core/tasks.pl:
+
 src/ui/main.pl:
 
 src/app/app.pl:
-
-src/core/tasks.pl:
 
 src/ui/root.pl:
 

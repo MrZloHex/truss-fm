@@ -44,6 +44,7 @@ src/main.pl            entry: start folder from argv, config_load, look_apply, A
 src/core/              no UI, no modular
   fs.pl                paths (join_path, is_under, ~), realpath, mounts, disk usage
   tasks.pl             copy/move/delete engine: Task = stack of Steps, run in slices
+  trash.pl             freedesktop trash: trash_one, trash_restore, per-disk .Trash-<uid>
   config.pl            CFG and its parser; colours as plain 0xFFrrggbb in CFG.colors
 src/ui/                the columns, their state and drawing
   look.pl              palette + C_* element colours (runtime globals), look_apply, theme
@@ -63,9 +64,10 @@ src/screen/            the whole screen, built every frame
 ## How it works
 
 - **One frame** (`screen/frame.pl`). `tick` gives tasks about 12 ms. `keys_first` catches a
-  vanished folder and answers the delete prompt before anything draws, so nothing can move under
+  vanished folder and answers the one-key prompts (`PR_DELETE`, `PR_CLASH`) before anything draws, so nothing can move under
   it. Then the bars and the four panes draw, then the TASKS box. After that, `keys_prompt` (a
-  focused `ui.input` takes the keys and Esc gives up), `keys_files`, and finally `keys_move`, which
+  focused `ui.input` takes the keys and Esc gives up; for `PR_FILTER`, whose field is in the path
+  bar, ↑/↓ move the cursor and Esc also clears the filter), `keys_files`, and finally `keys_move`, which
   makes at most one folder change per frame (tab, `.`, `~`, `b`, `t`/`x`, or `go`) and calls
   `ui.redo()`.
 - **Navigation goes through `go`.** Panes never change the cwd themselves. A focused pane writes
@@ -79,6 +81,19 @@ src/screen/            the whole screen, built every frame
   `PreviewPane.want_open`/`want_with`).
 - **Tabs.** `a.tabs` is a `Vector<Tab>` (cwd, label, saved cursor). Switching sets
   `MainPane.restore` (row plus one; 0 means none).
+- **The main column's rows.** `MainPane.all` owns the folder as read and sorted. `files` is the
+  view: copies of `all`'s records that the filter lets through, which share their name strings.
+  Everything downstream (cursor, selection, preview, `record_at`) uses `files`. Only `all` is ever
+  freed. Always read through `main_read`, which empties the view *before* `read_folder` frees the
+  old names. `main_sort` sorts `all` and calls `main_view`. `main_filter` sets the query.
+  `fuzzy_hit` is a smart-case subsequence match whose hit bits drive the `C_MATCH` letters in
+  `name_lit` (fg only, so the row fill survives). `app_enter` clears the filter.
+- **Movement keys** (`move_keys` in `ui/common.pl`, used by all three lists): j/k, `gg`/`G`,
+  Ctrl-d/u (half page), Ctrl-f/b (page); the list widget itself does arrows, PgUp/PgDn and
+  Home/End. The main column also has the `s` chord: n/s/d sort by name, size or date (the same
+  column again flips it), and r reverses. Chord state (`g_armed`, `MainPane.sorting`, the places
+  `jump`) may only be cleared on a frame that carries a key (`ui.key() != 0`), because frames also
+  come from wake-ups and redraws.
 - **Selection.** `V` sets `MainPane.visual` and `anchor`, and also keeps the anchor by file name
   (`anchor_name`). `anchor_fix` puts it back on that file after every re-read or re-sort, or ends
   visual mode if the file is gone. Never let a selection stay on a row number, because the rows
@@ -88,9 +103,20 @@ src/screen/            the whole screen, built every frame
   stack, so there's never a tree walk in one frame. A move is a single rename, and only falls back
   to copy + `SK_DROP` (which deletes the source only if nothing failed) on `EXDEV`. `SK_SEAL`
   restores a copied folder's mode and mtime after its children, and `copy_end` does the same for
-  files. Nothing is overwritten: taken names become `name (2).ext`, and files are opened `O_EXCL`.
+  files. Name clashes: `file_paste` counts the top-level names taken, and `PR_CLASH` asks once
+  (o/s/k). That becomes `CLASH_OVER`/`SKIP`/`KEEP` in `task_transfer`. Overwrite means a folder
+  merges into its namesake, and a file or link is written aside as `*.pluf-part`, then renamed
+  over the old one in `copy_end` only once it's whole. A file/folder type mismatch fails. A copy
+  into its own folder always keeps both. Without overwrite, files are opened `O_EXCL`.
   While a task runs, `app_refresh(a, FALSE)` re-reads the main column every `REFRESH_MS`, and only
   if the folder's own mtime changed. When it ends, `app_refresh(a, TRUE)` re-reads every column.
+- **Trash** (`core/trash.pl`, `file_trash`/`file_untrash`). `D`/Delete trashes at once, with no
+  question. The `.trashinfo` file is created `O_EXCL` first to reserve the name, then the item is
+  renamed in. The home trash is used on home's disk; any other disk uses its own top-level
+  `.Trash-<uid>` (`mount_point_of`), so nothing is ever copied across disks. `DeletionDate` is
+  local time (`localtime_r`). `u` restores the last batch (`undo_from`/`undo_put`). `X` deletes for
+  good, through the `PR_DELETE` prompt. Trashing re-reads places, so a newly made Trash shows up
+  (jump key `t`).
 - **Opening** (`app/open.pl`). `open.<exts> = [term:] cmd` rules live in `CFG.openers`. Files are
   passed as `"$@"` to `sh -c` (`%f` marks where they go) and are never put into the command
   text. `term:` runs between `ui.pause(TRUE)` and `ui.pause(FALSE)`, the API added to modular for
