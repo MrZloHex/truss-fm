@@ -86,8 +86,9 @@ obj/ui/root.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
-  src/fs.pl \
-  src/look.pl
+  src/core/fs.pl \
+  src/ui/look.pl \
+  src/core/config.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -261,6 +262,8 @@ src/ui/common.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
 
-src/fs.pl:
+src/core/fs.pl:
 
-src/look.pl:
+src/ui/look.pl:
+
+src/core/config.pl:

@@ -12,10 +12,10 @@ USE <std/os/os.pl>
 USE <modular.pl>
 !USES <common.pl>
 !USES <main.pl>
-!USES <../fs.pl>
-!USES <../look.pl>
+!USES <../core/fs.pl>
+!USES <look.pl>
+!USES <../core/config.pl>
 
-CONST I32 PREVIEW_W_PERC = 20
 CONST USIZE PREVIEW_HEAD = 32768        ; what is kept of a text
 CONST U64 PREVIEW_COUNT = 16777216      ; past this its lines are not counted
 CONST U64 PREVIEW_IMAGE = 33554432      ; past this a picture is not opened
@@ -46,6 +46,8 @@ TYPE PreviewPane: STRUCT
  | B1 has_img
  |
  | Vector<FileRecord> files ; a folder's listing
+ | B1 want_open             ; ↲ OPEN clicked: the program sees to it
+ | B1 want_with             ; o WITH clicked
  \_
 
 ; --- reading --------------------------------------------------------------------
@@ -162,7 +164,7 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | IF [ p.entry.broken ]
  |  | p.kind = PV_BROKEN
  | ELIF [ p.entry.dir ]
- |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | TRUE | "" ] | PV_DIR | PV_UNREADABLE ]
+ |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | CFG.hidden | "" ] | PV_DIR | PV_UNREADABLE ]
  | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && p.entry.size <= PREVIEW_IMAGE ]
  |  | p.has_img = (image_load)[ @(p.img) | path AS @CONST C1 ]
  |  | p.kind = SELECT [ p.has_img | PV_IMAGE | PV_BINARY ]
@@ -339,11 +341,27 @@ ABYSS preview_meta: [ @Ui ui | @PreviewPane p ]
  | (ui.put)[ (fg)[ TEXT ] | perm AS @CONST C1 ]
  \_
 
-ABYSS preview_actions: [ @Ui ui ]
- | (ui.text)[ GROW | 1 ]
+; ↲ OPEN and o WITH, as Enter and o: a click says so in `want_open`,
+; `want_with` -- a folder has none, Enter goes into it
+ABYSS preview_actions: [ @Ui ui | @PreviewPane p ]
+ | IF [ p.kind == PV_DIR ]
+ |  | RET []
+ |  \_
+ | (ui.row)[ GROW | 1 ]
+ | U32 open = (ui.id)[ "preview-open" ]
+ | @Node a = (ui.text)[ FIT | 1 ]
+ | (a.with_id)[ open ]
+ | (ui.cursor_on)[ open | CUR_HAND ]
  | (ui.put)[ (button_style)[ TRUE ] | " ↲ OPEN " ]
- | (ui.put)[ (fg)[ TEXT ] | " " ]
+ | (ui.space)[ 1 | 1 ]
+ | U32 with = (ui.id)[ "preview-with" ]
+ | @Node w = (ui.text)[ FIT | 1 ]
+ | (w.with_id)[ with ]
+ | (ui.cursor_on)[ with | CUR_HAND ]
  | (ui.put)[ (button_style)[ FALSE ] | " o WITH " ]
+ | (ui.close)[]
+ | p.want_open = (ui.clicked)[ open ]
+ | p.want_with = (ui.clicked)[ with ]
  \_
 
 ABYSS preview_body: [ @Ui ui | @PreviewPane p | Rect r | I32 width ]
@@ -370,7 +388,7 @@ ABYSS preview_pane: [ @Ui ui | @PreviewPane p | @MainPane m ]
  | I32 width = SELECT [ r.w > 1 | r.w | 1 ]
  | B1 shown = p.kind != PV_NONE
  |
- | (ui.box)[ "PREVIEW" | (pct)[ PREVIEW_W_PERC ] | GROW ]
+ | (ui.box)[ "" | (pct)[ CFG.preview_width ] | GROW ]
  | IF [ shown ]
  |  | (preview_head)[ ui | p | width ]
  |  | (preview_rule)[ ui | width ]
@@ -385,7 +403,7 @@ ABYSS preview_pane: [ @Ui ui | @PreviewPane p | @MainPane m ]
  |  | (preview_rule)[ ui | width ]
  |  | (preview_meta)[ ui | p ]
  |  | (ui.space)[ 1 | 1 ]
- |  | (preview_actions)[ ui ]
+ |  | (preview_actions)[ ui | p ]
  |  \_
  | (ui.close)[]
  \_

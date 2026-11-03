@@ -1,13 +1,25 @@
-; places.pl -- the first column: places to go to, under headings. The cursor
-; steps over the headings and the gaps; Enter opens a place
+; places.pl -- the first column: places to go to, under headings. Home and
+; the bookmarks of ~/.config/pluf/places; the disks, by where they are
+; mounted. The cursor steps over the headings and the gaps; Enter opens a
+; place, ' and its key open it from any column. The place the program is
+; in is amber
 
 USE <std/core/core.pl>
+USE <std/core/str.pl>
+USE <std/alloc/string.pl>
+USE <std/io/io.pl>
+USE <std/os/os.pl>
+USE <std/os/time.pl>
 
 USE <modular.pl>
-!USES <../look.pl>
+!USES <common.pl>
+!USES <../core/fs.pl>
+!USES <look.pl>
+!USES <../core/config.pl>
 
-CONST I32 PLACES_W_PERC = 15
-CONST I32 PLACE_NAME_W = 16     ; the name; its key after it
+CONST I32 PLACE_NAME_W = 14     ; the name; its key or its disk's use after it
+CONST USIZE PLACE_LINE = 4096
+CONST U64 MOUNTS_MS = 2000      ; how often the mounts are looked at
 
 TYPE PlaceKind: ENUM
  | PK_PLACE
@@ -17,62 +29,424 @@ TYPE PlaceKind: ENUM
 
 TYPE Place: STRUCT
  | PlaceKind kind
- | @CONST C1 name
- | @CONST C1 key
+ | String name
+ | String path              ; where Enter goes; empty for a heading or a gap
+ | String key               ; ' and this go here; may be empty
+ | I32 used                 ; a disk's use in percent; -1: not a disk
  \_
-
-CONST Place PLACES{} = [ [ .kind = PK_HEAD  | .name = "PLACES"  | .key = ""  ] |
-                         [ .kind = PK_PLACE | .name = "~ home"  | .key = "h" ] |
-                         [ .kind = PK_PLACE | .name = "work"    | .key = "w" ] |
-                         [ .kind = PK_GAP   | .name = ""        | .key = ""  ] |
-                         [ .kind = PK_HEAD  | .name = "DEVICES" | .key = ""  ] |
-                         [ .kind = PK_PLACE | .name = "nvme0 /" | .key = ""  ] ]
-CONST I32 NPLACES = COUNT [ PLACES ]
 
 TYPE PlacesPane: STRUCT
  | ListState list
- | I32 active               ; the place that is open
+ | Vector<Place> rows
+ | B1 read                  ; rows were read; FALSE: read them next frame
+ | B1 jump                  ; ' was pressed: the next key names a place
+ | U64 mounts               ; mounts_signature when the disks were read
+ | U64 checked              ; now_ms they were last looked at
  \_
+
+; --- rows -----------------------------------------------------------------------
+
+ABYSS place_add: [ @Vector<Place> v | PlaceKind k | @CONST C1 name | @CONST C1 path | @CONST C1 key | I32 used ]
+ | Place r
+ | r.kind = k
+ | r.name = (String.of)[ name ]
+ | r.path = (String.of)[ path ]
+ | r.key = (String.of)[ key ]
+ | r.used = used
+ | (v.push)[ r ]
+ \_
+
+; every string of every row freed; the vector kept
+ABYSS places_clear: [ @Vector<Place> v ]
+ | FOR [ USIZE i = 0 | i < (v.size)[] | i += 1 ]
+ |  | @Place r = (v.at)[ i ]
+ |  | (r.name.deinit)[]
+ |  | (r.path.deinit)[]
+ |  | (r.key.deinit)[]
+ |  \_
+ | (v.clear)[]
+ \_
+
+ABYSS dispose_places: [ @PlacesPane p ]
+ | (places_clear)[ @(p.rows) ]
+ | (p.rows.deinit)[]
+ \_
+
+; where the bookmarks are kept, in `out`
+ABYSS bookmarks_file: [ @C1 out | USIZE cap ]
+ | BufferSink b = (BufferSink.over)[ out | cap ]
+ | (b.print)[ "%s/.config/pluf/places" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ \_
+
+; the row of the place at `path`; -1: there is none. A place is listed once
+LOCAL I32 place_known: [ @Vector<Place> v | @CONST C1 path ]
+ | FOR [ USIZE i = 0 | i < (v.size)[] | i += 1 ]
+ |  | IF [ ((v.at)[ i ].kind == PK_PLACE) && ((v.at)[ i ].path.equals)[ path ] ]
+ |  |  | RET [ i AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; the folder `path` (~ for home) as a place, under `name` or, empty, its
+; own; left out when it is not there. A place already there takes the key
+; and the name given, so the config can rename or rekey a standard one
+ABYSS place_dir: [ @Vector<Place> v | @CONST C1 name | @CONST C1 path | @CONST C1 key | @CONST C1 home ]
+ | C1 full{PLACE_LINE}
+ | BufferSink b = (BufferSink.over)[ full | PLACE_LINE ]
+ | IF [ path{0} == '~' ]
+ |  | (b.print)[ "%s%s" | home | path + 1 ]
+ | ELSE
+ |  | (b.print)[ "%s" | path ]
+ |  \_
+ | Result<String | IoError> r = (get_realpath)[ full AS @CONST C1 ]
+ | IF [ (r.is_err)[] ]
+ |  | RET []
+ |  \_
+ | String f = (r.unwrap)[]
+ | POSTLUDE (f.deinit)[]
+ | Result<FileInfo | IoError> fi = (fs_info)[ (f.cstr)[] ]
+ | IF [ (fi.is_err)[] || (fi.unwrap)[].kind != FS_DIR ]
+ |  | RET []
+ |  \_
+ | I32 was = (place_known)[ v | (f.cstr)[] ]
+ | IF [ was >= 0 ]
+ |  | @Place r = (v.at)[ was AS USIZE ]
+ |  | IF [ key{0} != '\0' ]
+ |  |  | (r.key.deinit)[]
+ |  |  | r.key = (String.of)[ key ]
+ |  |  \_
+ |  | IF [ name{0} != '\0' ]
+ |  |  | (r.name.deinit)[]
+ |  |  | r.name = (String.of)[ name ]
+ |  |  \_
+ |  | RET []
+ |  \_
+ | IF [ name{0} != '\0' ]
+ |  | (place_add)[ v | PK_PLACE | name | (f.cstr)[] | key | -1 ]
+ |  | RET []
+ |  \_
+ | String own = (folder_name)[ (f.cstr)[] ]
+ | (place_add)[ v | PK_PLACE | (own.cstr)[] | (f.cstr)[] | key | -1 ]
+ | (own.deinit)[]
+ \_
+
+; a place as the config's `place =` and the bookmarks file write it: its
+; key, or - for none, a space, its path, and if it is to be named so, " | "
+; and the name
+;   w ~/work | Work
+;   - /mnt/archive
+ABYSS place_line: [ @Vector<Place> v | @CONST C1 text | @CONST C1 home ]
+ | IF [ text{0} == '\0' || text{0} == '#' || text{1} != ' ' ]
+ |  | RET []
+ |  \_
+ | C1 key{2}
+ | key{0} = SELECT [ text{0} == '-' | '\0' | text{0} ]
+ | key{1} = '\0'
+ | C1 path{PLACE_LINE}
+ | (str_copy)[ path | PLACE_LINE | text + 2 ]
+ | @CONST C1 name = ""
+ | FOR [ USIZE i = 0 | path{i} != '\0' | i += 1 ]
+ |  | IF [ path{i} == ' ' && path{i + 1} == '|' && path{i + 2} == ' ' ]
+ |  |  | path{i} = '\0'
+ |  |  | name = (path AS @CONST C1) + i + 3
+ |  |  | BREAK
+ |  |  \_
+ |  \_
+ | @CONST C1 at = path AS @CONST C1
+ | WHILE [ ?at == ' ' ]
+ |  | at += 1
+ |  \_
+ | (place_dir)[ v | name | at | key AS @CONST C1 | home ]
+ \_
+
+; ~/.config/pluf/places, what b writes: a place a line, as place_line has it
+ABYSS bookmarks_read: [ @Vector<Place> v | @CONST C1 home ]
+ | C1 file{PLACE_LINE}
+ | (bookmarks_file)[ file | PLACE_LINE ]
+ | String text
+ | POSTLUDE (text.deinit)[]
+ | IF [ ((read_file)[ file AS @CONST C1 | @text ].is_err)[] ]
+ |  | RET []
+ |  \_
+ | Split lines = (Split.over)[ (text.cstr)[] | '\n' ]
+ | C1 line{PLACE_LINE}
+ | WHILE [ (lines.next)[ line | PLACE_LINE ] ]
+ |  | (place_line)[ v | line AS @CONST C1 | home ]
+ |  \_
+ \_
+
+; --- the standard places --------------------------------------------------------
+
+; the user's folders, as xdg-user-dirs names them: XDG_<NAME>_DIR in
+; ~/.config/user-dirs.dirs, or else what it would make
+CONST @CONST C1 XDG_NAMES{} = [ "DESKTOP" | "DOCUMENTS" | "DOWNLOAD" | "MUSIC" | "PICTURES" | "VIDEOS" ]
+CONST @CONST C1 XDG_DEFAULT{} = [ "~/Desktop" | "~/Documents" | "~/Downloads" | "~/Music" | "~/Pictures" | "~/Videos" ]
+CONST @CONST C1 XDG_KEY{} = [ "e" | "o" | "d" | "m" | "p" | "v" ]
+CONST I32 NXDG = COUNT [ XDG_NAMES ]
+
+; the folder XDG_<name>_DIR is set to in `dirs`, in `out` with ~ for
+; $HOME; FALSE: it is not set there
+LOCAL B1 xdg_dir: [ @CONST C1 dirs | @CONST C1 name | @C1 out ]
+ | C1 want{64}
+ | BufferSink w = (BufferSink.over)[ want | 64 ]
+ | (w.print)[ "XDG_%s_DIR=\"" | name ]
+ | Split lines = (Split.over)[ dirs | '\n' ]
+ | C1 line{PLACE_LINE}
+ | WHILE [ (lines.next)[ line | PLACE_LINE ] ]
+ |  | IF [ !((str_starts)[ line AS @CONST C1 | want AS @CONST C1 ]) ]
+ |  |  | CONTINUE
+ |  |  \_
+ |  | @CONST C1 v = (line AS @CONST C1) + (str_len)[ want AS @CONST C1 ]
+ |  | BufferSink b = (BufferSink.over)[ out | PLACE_LINE ]
+ |  | IF [ (str_starts)[ v | "$HOME" ] ]
+ |  |  | (b.print)[ "~" ]
+ |  |  | v += 5
+ |  |  \_
+ |  | FOR [ USIZE i = 0 | v{i} != '\0' && v{i} != '"' | i += 1 ]
+ |  |  | C1 one{2}
+ |  |  | one{0} = v{i}
+ |  |  | one{1} = '\0'
+ |  |  | (b.print)[ "%s" | one AS @CONST C1 ]
+ |  |  \_
+ |  | RET [ TRUE ]
+ |  \_
+ | RET [ FALSE ]
+ \_
+
+; Desktop, Documents, Downloads, Music, Pictures, Videos that are there, and
+; the root; one set to home itself, as xdg does with one not used, is not
+ABYSS standard_read: [ @Vector<Place> v | @CONST C1 home ]
+ | C1 file{PLACE_LINE}
+ | BufferSink b = (BufferSink.over)[ file | PLACE_LINE ]
+ | (b.print)[ "%s/.config/user-dirs.dirs" | home ]
+ | String dirs
+ | POSTLUDE (dirs.deinit)[]
+ | IF [ ((read_file)[ file AS @CONST C1 | @dirs ].is_err)[] ]
+ |  | dirs = (String.of)[ "" ]
+ |  \_
+ | FOR [ I32 i = 0 | i < NXDG | i += 1 ]
+ |  | C1 path{PLACE_LINE}
+ |  | IF [ !((xdg_dir)[ (dirs.cstr)[] | XDG_NAMES{i} | path ]) ]
+ |  |  | (str_copy)[ path | PLACE_LINE | XDG_DEFAULT{i} ]
+ |  |  \_
+ |  | IF [ !((str_eq)[ path AS @CONST C1 | "~" ]) && !((str_eq)[ path AS @CONST C1 | "~/" ]) ]
+ |  |  | (place_dir)[ v | "" | path AS @CONST C1 | XDG_KEY{i} | home ]
+ |  |  \_
+ |  \_
+ | (place_dir)[ v | "/ root" | "/" | "/" | home ]
+ \_
+
+; a disk that udisks (udiskie, a desktop) mounted: under /run/media/<user>/
+; or /media/, by its label
+LOCAL B1 removable: [ @CONST C1 path ]
+ | RET [ (str_starts)[ path | "/run/media/" ] || (str_starts)[ path | "/media/" ] ]
+ \_
+
+; the disks that are mounted, by where -- a removable one by its label,
+; ⏏ before it; the device is in the top bar
+ABYSS disks_read: [ @Vector<Place> v ]
+ | Vector<Mount> ms
+ | (read_mounts)[ @ms ]
+ | POSTLUDE (mounts_free)[ @ms ]
+ | FOR [ USIZE i = 0 | i < (ms.size)[] | i += 1 ]
+ |  | @Mount m = (ms.at)[ i ]
+ |  | @CONST C1 at = (m.path.cstr)[]
+ |  | F32 used = ((get_phy_part_usage)[ at ].unwrap_or)[ 0.0 ]
+ |  | IF [ (removable)[ at ] ]
+ |  |  | String label = (get_dirname)[ at ]
+ |  |  | C1 name{280}
+ |  |  | BufferSink b = (BufferSink.over)[ name | 280 ]
+ |  |  | (b.print)[ "⏏ %s" | (label.cstr)[] ]
+ |  |  | (place_add)[ v | PK_PLACE | name AS @CONST C1 | at | "" | used AS I32 ]
+ |  |  | (label.deinit)[]
+ |  | ELSE
+ |  |  | (place_add)[ v | PK_PLACE | at | at | "" | used AS I32 ]
+ |  |  \_
+ |  \_
+ \_
+
+; PLACES: home, the standard ones, the config's, the bookmarks; DEVICES:
+; the disks. The config says which of these there are
+ABYSS places_read: [ @PlacesPane p ]
+ | (places_clear)[ @(p.rows) ]
+ | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
+ | (place_add)[ @(p.rows) | PK_HEAD | "PLACES" | "" | "" | -1 ]
+ | (place_dir)[ @(p.rows) | "~ home" | "~" | "h" | home ]
+ | IF [ CFG.std_places ]
+ |  | (standard_read)[ @(p.rows) | home ]
+ |  \_
+ | FOR [ USIZE i = 0 | i < (CFG.places.size)[] | i += 1 ]
+ |  | (place_line)[ @(p.rows) | ((CFG.places.at)[ i ].cstr)[] | home ]
+ |  \_
+ | (bookmarks_read)[ @(p.rows) | home ]
+ | IF [ CFG.devices ]
+ |  | (place_add)[ @(p.rows) | PK_GAP | "" | "" | "" | -1 ]
+ |  | (place_add)[ @(p.rows) | PK_HEAD | "DEVICES" | "" | "" | -1 ]
+ |  | (disks_read)[ @(p.rows) ]
+ |  \_
+ | p.mounts = (mounts_signature)[]
+ | p.checked = (now_ms)[]
+ | p.read = TRUE
+ \_
+
+CONST I32 BM_ADDED = 0
+CONST I32 BM_THERE = 1          ; a place already: home, a standard one, a bookmark
+CONST I32 BM_FAILED = 2         ; the file could not be written
+
+; `cwd` among the bookmarks, with no key. The rows are read again on the
+; next frame
+I32 bookmark_add: [ @PlacesPane p | @CONST C1 cwd ]
+ | IF [ (place_known)[ @(p.rows) | cwd ] >= 0 ]
+ |  | RET [ BM_THERE ]
+ |  \_
+ | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
+ | C1 dir{PLACE_LINE}
+ | BufferSink d = (BufferSink.over)[ dir | PLACE_LINE ]
+ | (d.print)[ "%s/.config" | home ]
+ | (fs_make_dir)[ dir AS @CONST C1 ]
+ | (d.print)[ "/pluf" ]
+ | (fs_make_dir)[ dir AS @CONST C1 ]
+ |
+ | C1 file{PLACE_LINE}
+ | (bookmarks_file)[ file | PLACE_LINE ]
+ | String text
+ | POSTLUDE (text.deinit)[]
+ | IF [ ((read_file)[ file AS @CONST C1 | @text ].is_err)[] ]
+ |  | text = (String.of)[ "" ]
+ |  \_
+ | IF [ (text.size)[] > 0 && (text.cstr)[]{(text.size)[] - 1} != '\n' ]
+ |  | (text.append)[ "\n" ]
+ |  \_
+ | String short = (get_shorter_path)[ cwd ]
+ | POSTLUDE (short.deinit)[]
+ | (text.append)[ "- " ]
+ | (text.append)[ (short.cstr)[] ]
+ | (text.append)[ "\n" ]
+ | p.read = FALSE
+ | RET [ SELECT [ ((write_file)[ file AS @CONST C1 | (text.cstr)[] ].is_ok)[] | BM_ADDED | BM_FAILED ] ]
+ \_
+
+; --- where the program is -------------------------------------------------------
+
+; is `cwd` `path` or in it? / holds everything
+LOCAL B1 under: [ @CONST C1 cwd | @CONST C1 path ]
+ | USIZE i = 0
+ | WHILE [ path{i} != '\0' ]
+ |  | IF [ cwd{i} != path{i} ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | i += 1
+ |  \_
+ | RET [ cwd{i} == '\0' || cwd{i} == '/' || i == 1 ]
+ \_
+
+; the row of the place `cwd` is in: the longest path it is under; -1: none
+I32 place_of: [ @PlacesPane p | @CONST C1 cwd ]
+ | I32 best = -1
+ | USIZE len = 0
+ | FOR [ USIZE i = 0 | i < (p.rows.size)[] | i += 1 ]
+ |  | @Place r = (p.rows.at)[ i ]
+ |  | IF [ r.kind == PK_PLACE && (r.path.size)[] > len && (under)[ cwd | (r.path.cstr)[] ] ]
+ |  |  | best = i AS I32
+ |  |  | len = (r.path.size)[]
+ |  |  \_
+ |  \_
+ | RET [ best ]
+ \_
+
+; --- the column -----------------------------------------------------------------
 
 ; a cursor that came onto a heading or a gap goes on the way it came, and
 ; back to where it `was` if there is no place that way
-ABYSS place_skip: [ @ListState l | I32 was ]
- | I32 step = SELECT [ l.cursor < was | -1 | 1 ]
- | WHILE [ l.cursor >= 0 && l.cursor < NPLACES && PLACES{l.cursor}.kind != PK_PLACE ]
- |  | l.cursor += step
+ABYSS place_skip: [ @PlacesPane p | I32 was ]
+ | I32 n = (p.rows.size)[] AS I32
+ | I32 step = SELECT [ p.list.cursor < was | -1 | 1 ]
+ | WHILE [ p.list.cursor >= 0 && p.list.cursor < n && (p.rows.at)[ p.list.cursor AS USIZE ].kind != PK_PLACE ]
+ |  | p.list.cursor += step
  |  \_
- | IF [ l.cursor < 0 || l.cursor >= NPLACES ]
- |  | l.cursor = was
+ | IF [ p.list.cursor < 0 || p.list.cursor >= n ]
+ |  | p.list.cursor = was
  |  \_
  \_
 
-ABYSS places_pane: [ @Ui ui | @PlacesPane p ]
+ABYSS place_go: [ @String go | @Place r ]
+ | (go.deinit)[]
+ | ?go = (String.of)[ (r.path.cstr)[] ]
+ \_
+
+; ' and a place's key go there, whichever column has the focus: this one
+; is drawn first, so it takes the key before the others see it
+ABYSS jump_keys: [ @Ui ui | @PlacesPane p | @String go ]
+ | IF [ !(p.jump) ]
+ |  | IF [ (ui.shortcut)[ "'" ] ]
+ |  |  | p.jump = TRUE
+ |  |  | (ui.redo)[]             ; the path bar, drawn before, shows it
+ |  |  \_
+ |  | RET []
+ |  \_
+ | U32 k = (ui.key)[]
+ | IF [ k == 0 ]
+ |  | RET []
+ |  \_
+ | p.jump = FALSE
+ | (ui.consume)[]
+ | (ui.redo)[]
+ | FOR [ USIZE i = 0 | i < (p.rows.size)[] | i += 1 ]
+ |  | @Place r = (p.rows.at)[ i ]
+ |  | IF [ (r.key.size)[] > 0 && ((r.key.cstr)[]{0} AS U32) == k ]
+ |  |  | (place_go)[ go | r ]
+ |  |  | RET []
+ |  |  \_
+ |  \_
+ \_
+
+; `go`: the place opened, if one was
+ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
+ | ; a disk mounted or taken away since: read again. Looked at now and then:
+ | ; the program wakes at least once a second
+ | IF [ p.read && CFG.devices && (now_ms)[] - p.checked > MOUNTS_MS ]
+ |  | p.checked = (now_ms)[]
+ |  | IF [ (mounts_signature)[] != p.mounts ]
+ |  |  | p.read = FALSE
+ |  |  \_
+ |  \_
+ | IF [ !(p.read) ]
+ |  | (places_read)[ p ]
+ |  \_
+ | (jump_keys)[ ui | p | go ]
+ |
  | U32 id = (ui.id)[ "places" ]
+ | I32 n = (p.rows.size)[] AS I32
+ | I32 here = (place_of)[ p | cwd ]
  | I32 was = p.list.cursor
  | IF [ (ui.focused)[ id ] ]
- |  | IF [ (ui.take)[ 'j' AS U32 ] ]
- |  |  | p.list.cursor += 1
- |  | ELIF [ (ui.take)[ 'k' AS U32 ] ]
- |  |  | p.list.cursor -= 1
+ |  | (move_keys)[ ui | @(p.list.cursor) ]
+ |  \_
+ |
+ | (ui.box)[ "" | (pct)[ CFG.places_width ] | GROW ]
+ | (ui.list)[ @(p.list) | id | n | GROW | GROW ]
+ | (place_skip)[ p | was ]
+ | IF [ (ui.focused)[ id ] && ((ui.take)[ KEY_ENTER ] || (ui.take)[ 'l' AS U32 ] || (ui.take)[ KEY_RIGHT ]) ]
+ |  | IF [ p.list.cursor >= 0 && p.list.cursor < n ]
+ |  |  | (place_go)[ go | (p.rows.at)[ p.list.cursor AS USIZE ] ]
  |  |  \_
  |  \_
  |
- | (ui.box)[ "" | (pct)[ PLACES_W_PERC ] | GROW ]
- | (ui.list)[ @(p.list) | id | NPLACES | GROW | GROW ]
- | (place_skip)[ @(p.list) | was ]
- | IF [ (ui.focused)[ id ] && (ui.take)[ KEY_ENTER ] ]
- |  | p.active = p.list.cursor
- |  \_
- |
- | FOR [ I32 i = 0 | i < NPLACES | i += 1 ]
- |  | @CONST Place r = @(PLACES{i})
+ | FOR [ I32 i = 0 | i < n | i += 1 ]
+ |  | @Place r = (p.rows.at)[ i AS USIZE ]
  |  | IF [ r.kind == PK_PLACE ]
  |  |  | (ui.list_row)[ @(p.list) | i | id ]
- |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == p.active | AMBER | TEXT ] ] | r.name | PLACE_NAME_W | TRUE ]
- |  |  | (ui.put)[ (fg)[ DIM ] | r.key ]
+ |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == here | AMBER | TEXT ] ] | (r.name.cstr)[] | PLACE_NAME_W - 1 | TRUE ]
+ |  |  | (ui.put)[ (fg)[ DIM ] | " " ]
+ |  |  | IF [ r.used >= 0 ]
+ |  |  |  | ((ui.pen)[ (fg)[ SELECT [ r.used >= DISK_FULL | ORANGE | DIM ] ] ].print)[ "%3d%%" | r.used ]
+ |  |  | ELSE
+ |  |  |  | (ui.put)[ (fg)[ DIM ] | (r.key.cstr)[] ]
+ |  |  |  \_
  |  | ELSE
  |  |  | (ui.text)[ GROW | 1 ]
- |  |  | (ui.put)[ (fg)[ DIM ] | r.name ]
+ |  |  | (ui.put)[ (fg)[ DIM ] | (r.name.cstr)[] ]
  |  |  \_
  |  \_
  | (ui.end)[]

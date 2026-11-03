@@ -1,6 +1,7 @@
 
 USE <std/core/core.pl>
 USE <std/alloc/string.pl>
+USE <std/alloc/vector.pl>
 USE <std/io/io.pl>
 USE <std/os/os.pl>
 
@@ -53,6 +54,99 @@ LOCAL B1 find_mount: [ @CONST C1 text | @CONST C1 dev | @C1 source | @C1 mount |
  | RET [ FALSE ]
  \_
 
+
+; a word of mountinfo as it was: \040 a space, \011 a tab, \134 a backslash
+LOCAL ABYSS unescape: [ @C1 s ]
+ | USIZE r = 0
+ | USIZE w = 0
+ | WHILE [ s{r} != '\0' ]
+ |  | B1 oct = s{r} == '\\' && s{r + 1} >= '0' && s{r + 1} <= '7'
+ |  | IF [ oct && s{r + 2} >= '0' && s{r + 2} <= '7' && s{r + 3} >= '0' && s{r + 3} <= '7' ]
+ |  |  | s{w} = (((s{r + 1} - '0') * 64) + ((s{r + 2} - '0') * 8) + (s{r + 3} - '0')) AS C1
+ |  |  | r += 4
+ |  | ELSE
+ |  |  | s{w} = s{r}
+ |  |  | r += 1
+ |  |  \_
+ |  | w += 1
+ |  \_
+ | s{w} = '\0'
+ \_
+
+TYPE Mount: STRUCT
+ | String source            ; /dev/nvme0n1p2
+ | String path              ; where it is mounted: /
+ \_
+
+ABYSS mounts_free: [ @Vector<Mount> v ]
+ | FOR [ USIZE i = 0 | i < (v.size)[] | i += 1 ]
+ |  | ((v.at)[i].source.deinit)[]
+ |  | ((v.at)[i].path.deinit)[]
+ |  \_
+ | (v.deinit)[]
+ \_
+
+; every block device that is mounted, in `out`, as mountinfo has them: a
+; device once, where it was mounted first; loop devices left out -- snaps
+; and the like -- but for an image the user mounted, under /run/media
+ABYSS read_mounts: [ @Vector<Mount> out ]
+ | String text
+ | POSTLUDE (text.deinit)[]
+ | IF [ ((read_file)[ "/proc/self/mountinfo" | @text ].is_err)[] ]
+ |  | RET []
+ |  \_
+ | C1 word{WORD}
+ | C1 mount{WORD}
+ | @CONST C1 line = (text.cstr)[]
+ | WHILE [ ?line != '\0' ]
+ |  | ; id, parent, maj:min, root, then the mount point
+ |  | @CONST C1 p = (field)[ (field)[ (field)[ (field)[ line | word ] | word ] | word ] | word ]
+ |  | p = (field)[ p | mount ]
+ |  | LOOP
+ |  |  | p = (field)[ p | word ]
+ |  |  | IF [ word{0} == '\0' || (str_eq)[ word | "-" ] ]
+ |  |  |  | BREAK
+ |  |  |  \_
+ |  |  \_
+ |  | (field)[ (field)[ p | word ] | word ]
+ |  | IF [ (str_starts)[ word | "/dev/" ] && (!((str_starts)[ word | "/dev/loop" ]) || (str_starts)[ mount | "/run/media/" ]) ]
+ |  |  | B1 seen = FALSE
+ |  |  | FOR [ USIZE i = 0 | i < (out.size)[] | i += 1 ]
+ |  |  |  | IF [ ((out.at)[i].source.equals)[ word AS @CONST C1 ] ]
+ |  |  |  |  | seen = TRUE
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | IF [ !seen ]
+ |  |  |  | (unescape)[ mount ]
+ |  |  |  | Mount m
+ |  |  |  | m.source = (String.of)[ word AS @CONST C1 ]
+ |  |  |  | m.path = (String.of)[ mount AS @CONST C1 ]
+ |  |  |  | (out.push)[ m ]
+ |  |  |  \_
+ |  |  \_
+ |  | WHILE [ ?line != '\0' && ?line != '\n' ]
+ |  |  | line += 1
+ |  |  \_
+ |  | IF [ ?line == '\n' ]
+ |  |  | line += 1
+ |  |  \_
+ |  \_
+ \_
+
+; what is mounted, as one number: another number, another set of mounts
+U64 mounts_signature: []
+ | String text
+ | POSTLUDE (text.deinit)[]
+ | IF [ ((read_file)[ "/proc/self/mountinfo" | @text ].is_err)[] ]
+ |  | RET [ 0 ]
+ |  \_
+ | U64 h = 14695981039346656037      ; FNV-1a
+ | @CONST C1 s = (text.cstr)[]
+ | FOR [ USIZE i = 0 | s{i} != '\0' | i += 1 ]
+ |  | h = (h ^ ((s{i} AS U8) AS U64)) * 1099511628211
+ |  \_
+ | RET [ h ]
+ \_
 
 Option<String> get_phy_part_name: [ @CONST C1 cwd ]
  | String mounts
@@ -143,6 +237,27 @@ String get_parent_path: [ @CONST C1 path ]
  |  \_
  | (s.truncate)[ SELECT [ cut > 0 | cut | 1 ] ]
  | RET [ s ]
+ \_
+
+; --- paths ----------------------------------------------------------------------
+
+; `dir`/`name`; / has no second /
+String join_path: [ @CONST C1 dir | @CONST C1 name ]
+ | String s = (String.of)[ dir ]
+ | IF [ !((str_eq)[ dir | "/" ]) ]
+ |  | (s.append)[ "/" ]
+ |  \_
+ | (s.append)[ name ]
+ | RET [ s ]
+ \_
+
+; is `path` `dir` or in it?
+B1 is_under: [ @CONST C1 path | @CONST C1 dir ]
+ | USIZE n = (str_len)[ dir ]
+ | IF [ !((str_starts)[ path | dir ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ path{n} == '\0' || path{n} == '/' || (str_eq)[ dir | "/" ] ]
  \_
 
 ; a size for a narrow column: 512B, 6K, 3.1M

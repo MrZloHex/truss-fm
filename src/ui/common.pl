@@ -9,8 +9,8 @@ USE <std/io/io.pl>
 USE <std/os/os.pl>
 
 USE <modular.pl>
-!USES <../fs.pl>
-!USES <../look.pl>
+!USES <../core/fs.pl>
+!USES <look.pl>
 
 CONST I32 ICON_W = 2        ; ▸, ✗ or nothing, and a space
 CONST I32 SIDE_W = 5        ; a count or a size: 142, 19.1M
@@ -22,6 +22,7 @@ TYPE FileRecord: STRUCT
  | B1 dir
  | B1 broken                ; a link to nothing
  | B1 hidden
+ | B1 exec                  ; a file someone may run: a x in its mode
  | I32 count                ; a folder's entries; -1: it cannot be read
  | U64 size
  | I64 modified             ; seconds since 1970
@@ -39,6 +40,14 @@ ABYSS records_clear: [ @Vector<FileRecord> v ]
 ABYSS records_free: [ @Vector<FileRecord> v ]
  | (records_clear)[ v ]
  | (v.deinit)[]
+ \_
+
+; the record in row `i`; NULL when there is none, as in an empty folder
+@FileRecord record_at: [ @Vector<FileRecord> v | I32 i ]
+ | IF [ i < 0 || (i AS USIZE) >= (v.size)[] ]
+ |  | RET [ NULL ]
+ |  \_
+ | RET [ (v.at)[ i AS USIZE ] ]
  \_
 
 ; how many entries a folder has; -1: it cannot be read
@@ -76,6 +85,7 @@ FileRecord record_of: [ @CONST C1 dir | @DirEntry e ]
  |
  | FileInfo info = (fi.unwrap)[]
  | r.dir = info.kind == FS_DIR
+ | r.exec = info.kind == FS_FILE && (info.mode & 0x49) != 0
  | r.size = info.size
  | r.modified = info.modified
  | IF [ r.dir ]
@@ -115,10 +125,52 @@ B1 read_folder: [ @Vector<FileRecord> out | @CONST C1 path | B1 hidden | @CONST 
  | RET [ TRUE ]
  \_
 
+; --- keys -----------------------------------------------------------------------
+
+; what a column with the focus was asked to do with its cursor's folder
+CONST I32 GO_NONE = 0
+CONST I32 GO_IN = 1         ; l, →, Enter: into the folder
+CONST I32 GO_UP = 2         ; h, ←, Backspace: up a folder
+
+; j and k move the cursor, as the arrows do in the list itself
+ABYSS move_keys: [ @Ui ui | @I32 cursor ]
+ | IF [ (ui.take)[ 'j' AS U32 ] ]
+ |  | ?cursor += 1
+ | ELIF [ (ui.take)[ 'k' AS U32 ] ]
+ |  | ?cursor -= 1
+ |  \_
+ \_
+
+I32 go_keys: [ @Ui ui ]
+ | IF [ (ui.take)[ 'l' AS U32 ] || (ui.take)[ KEY_RIGHT ] || (ui.take)[ KEY_ENTER ] ]
+ |  | RET [ GO_IN ]
+ |  \_
+ | IF [ (ui.take)[ 'h' AS U32 ] || (ui.take)[ KEY_LEFT ] || (ui.take)[ KEY_BACKSPACE ] ]
+ |  | RET [ GO_UP ]
+ |  \_
+ | RET [ GO_NONE ]
+ \_
+
+; the folder a column asks to go to, in `go`: for GO_UP the one around
+; `cwd`, the current folder; for GO_IN `e` of `dir`, the folder the column
+; lists, if it is a folder that can be read. `e` is NULL in an empty folder
+ABYSS ask_go: [ @String go | I32 how | @CONST C1 cwd | @CONST C1 dir | @CONST FileRecord e ]
+ | IF [ how == GO_UP ]
+ |  | (go.deinit)[]
+ |  | ?go = (get_parent_path)[ cwd ]
+ | ELIF [ how == GO_IN && e != NULL && e.dir && !(e.broken) && e.count >= 0 ]
+ |  | C1 path{4096}
+ |  | BufferSink b = (BufferSink.over)[ path | 4096 ]
+ |  | (b.print)[ SELECT [ (str_eq)[ dir | "/" ] | "%s%s" | "%s/%s" ] | dir | (e.name.cstr)[] ]
+ |  | (go.deinit)[]
+ |  | ?go = (String.of)[ path AS @CONST C1 ]
+ |  \_
+ \_
+
 ; --- pieces of a row ------------------------------------------------------------
 
 ; a name's colour: red for a broken link, else as on the cursor, hidden,
-; a folder, a file
+; a folder, a program, a file
 Color record_color: [ @CONST FileRecord e | B1 lit ]
  | IF [ e.broken ]
  |  | RET [ C_BROKEN ]
@@ -128,6 +180,9 @@ Color record_color: [ @CONST FileRecord e | B1 lit ]
  |  \_
  | IF [ e.hidden ]
  |  | RET [ C_HIDDEN ]
+ |  \_
+ | IF [ e.exec ]
+ |  | RET [ C_EXEC ]
  |  \_
  | RET [ SELECT [ e.dir | C_DIR | TEXT ] ]
  \_

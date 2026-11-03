@@ -1,5 +1,5 @@
-obj/app.o: \
-  src/app.pl \
+obj/screen/taskbox.o: \
+  src/screen/taskbox.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/option.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/bits.pl \
@@ -24,7 +24,6 @@ obj/app.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl \
-  src/fs.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/error.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/source.pl \
@@ -40,7 +39,6 @@ obj/app.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
-  src/ui/places.pl \
   /home/mzh/Projects/PLUM/modular/lib/modular.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/colors.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/geometry.pl \
@@ -87,11 +85,18 @@ obj/app.o: \
   /home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
-  src/look.pl \
-  src/ui/root.pl \
+  src/ui/look.pl \
+  src/core/config.pl \
+  src/core/tasks.pl \
+  src/core/fs.pl \
+  src/app/app.pl \
+  src/ui/places.pl \
   src/ui/common.pl \
+  src/ui/root.pl \
   src/ui/main.pl \
-  src/ui/preview.pl
+  src/ui/preview.pl \
+  src/app/files.pl \
+  src/app/open.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -141,8 +146,6 @@ obj/app.o: \
 
 /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl:
 
-src/fs.pl:
-
 /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/io/error.pl:
@@ -172,8 +175,6 @@ src/fs.pl:
 /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
-
-src/ui/places.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/modular.pl:
 
@@ -267,12 +268,26 @@ src/ui/places.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/ui/app.pl:
 
-src/look.pl:
+src/ui/look.pl:
 
-src/ui/root.pl:
+src/core/config.pl:
+
+src/core/tasks.pl:
+
+src/core/fs.pl:
+
+src/app/app.pl:
+
+src/ui/places.pl:
 
 src/ui/common.pl:
+
+src/ui/root.pl:
 
 src/ui/main.pl:
 
 src/ui/preview.pl:
+
+src/app/files.pl:
+
+src/app/open.pl:

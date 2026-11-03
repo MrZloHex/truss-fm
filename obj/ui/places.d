@@ -21,22 +21,32 @@ obj/ui/places.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/core/hash.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/encoding.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/date.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/io/error.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/io/source.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/io/file.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/io/text.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/path.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
   /home/mzh/Projects/PLUM/modular/lib/modular.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/colors.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/geometry.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/utf8.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/math.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/base64.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl \
   /home/mzh/Projects/PLUM/modular/lib/display/canvas.pl \
   /home/mzh/Projects/PLUM/modular/lib/display/image.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/io/error.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/io/source.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/io/file.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/io/text.pl \
   /home/mzh/Projects/PLUM/modular/lib/audio/sound.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/vector.pl \
   /home/mzh/Projects/PLUM/modular/lib/input/event.pl \
@@ -50,10 +60,8 @@ obj/ui/places.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/controls.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/charts.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/menus.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/files.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/code.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/extras.pl \
@@ -63,7 +71,6 @@ obj/ui/places.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/plot.pl \
   /home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl \
   /home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/unistd.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/signal.pl \
@@ -78,8 +85,10 @@ obj/ui/places.o: \
   /home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl \
-  src/look.pl
+  src/ui/common.pl \
+  src/core/fs.pl \
+  src/ui/look.pl \
+  src/core/config.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -123,6 +132,42 @@ obj/ui/places.o: \
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/date.pl:
 
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/io/io.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/io/error.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/io/source.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/io/file.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/io/text.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/time.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/path.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/random.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/process.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
+
 /home/mzh/Projects/PLUM/modular/lib/modular.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/core/colors.pl:
@@ -135,25 +180,9 @@ obj/ui/places.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/core/base64.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl:
-
 /home/mzh/Projects/PLUM/modular/lib/display/canvas.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/display/image.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/io/io.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/io/error.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/io/source.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/io/file.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/io/text.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/audio/sound.pl:
 
@@ -181,13 +210,9 @@ obj/ui/places.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/time.pl:
-
 /home/mzh/Projects/PLUM/modular/lib/ui/menus.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/ui/files.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl:
 
@@ -206,8 +231,6 @@ obj/ui/places.o: \
 /home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl:
 
@@ -237,6 +260,10 @@ obj/ui/places.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/ui/app.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
+src/ui/common.pl:
 
-src/look.pl:
+src/core/fs.pl:
+
+src/ui/look.pl:
+
+src/core/config.pl:

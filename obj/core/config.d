@@ -1,5 +1,5 @@
-obj/fs.o: \
-  src/fs.pl \
+obj/core/config.o: \
+  src/core/config.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/option.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/bits.pl \
@@ -24,6 +24,7 @@ obj/fs.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/string.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/alloc/vector.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/error.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/io/source.pl \
@@ -87,6 +88,8 @@ obj/fs.o: \
 /home/mzh/mipt/04/CC/plum/lib/std/alloc/allocator.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/alloc/system.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/alloc/vector.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/std/io/io.pl:
 

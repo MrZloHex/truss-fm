@@ -32,6 +32,16 @@ obj/main.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/core/hash.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/deque.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/alloc/queue.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/core/date.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/path.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
+  /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
   /home/mzh/Projects/PLUM/modular/lib/modular.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/colors.pl \
   /home/mzh/Projects/PLUM/modular/lib/core/geometry.pl \
@@ -47,7 +57,6 @@ obj/main.o: \
   /home/mzh/mipt/04/CC/plum/lib/std/core/array.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/random.pl \
   /home/mzh/mipt/04/CC/plum/lib/std/core/encoding.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/core/date.pl \
   /home/mzh/Projects/PLUM/modular/lib/audio/sound.pl \
   /home/mzh/Projects/PLUM/modular/lib/input/event.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/node.pl \
@@ -59,10 +68,8 @@ obj/main.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/controls.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/charts.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/time.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/menus.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/files.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/code.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/extras.pl \
@@ -72,7 +79,6 @@ obj/main.o: \
   /home/mzh/Projects/PLUM/modular/lib/ui/plot.pl \
   /home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl \
   /home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/env.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/unistd.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/signal.pl \
@@ -87,20 +93,22 @@ obj/main.o: \
   /home/mzh/Projects/PLUM/modular/lib/renderers/web/protocol.pl \
   /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
-  src/look.pl \
-  src/app.pl \
-  src/fs.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/os.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/path.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/random.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/process.pl \
-  /home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl \
+  src/core/fs.pl \
+  src/core/config.pl \
+  src/ui/look.pl \
+  src/app/app.pl \
+  src/core/tasks.pl \
   src/ui/places.pl \
-  src/ui/root.pl \
   src/ui/common.pl \
+  src/ui/root.pl \
   src/ui/main.pl \
-  src/ui/preview.pl
+  src/ui/preview.pl \
+  src/screen/frame.pl \
+  src/screen/bars.pl \
+  src/screen/taskbox.pl \
+  src/app/files.pl \
+  src/app/open.pl \
+  src/screen/keys.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/os/args.pl:
 
@@ -166,6 +174,26 @@ obj/main.o: \
 
 /home/mzh/mipt/04/CC/plum/lib/std/alloc/queue.pl:
 
+/home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/time.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/core/date.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/path.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/random.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/process.pl:
+
+/home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
+
 /home/mzh/Projects/PLUM/modular/lib/modular.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/core/colors.pl:
@@ -196,8 +224,6 @@ obj/main.o: \
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/encoding.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/core/date.pl:
-
 /home/mzh/Projects/PLUM/modular/lib/audio/sound.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/input/event.pl:
@@ -220,13 +246,9 @@ obj/main.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/ui/pickers.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/time.pl:
-
 /home/mzh/Projects/PLUM/modular/lib/ui/menus.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/ui/files.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/fs.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/ui/markdown.pl:
 
@@ -245,8 +267,6 @@ obj/main.o: \
 /home/mzh/Projects/PLUM/modular/lib/renderers/tui/render.pl:
 
 /home/mzh/Projects/PLUM/modular/lib/renderers/tui/terminal.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/env.pl:
 
 /home/mzh/mipt/04/CC/plum/lib/extern/ioctl.pl:
 
@@ -276,30 +296,34 @@ obj/main.o: \
 
 /home/mzh/Projects/PLUM/modular/lib/ui/app.pl:
 
-src/look.pl:
+src/core/fs.pl:
 
-src/app.pl:
+src/core/config.pl:
 
-src/fs.pl:
+src/ui/look.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/os.pl:
+src/app/app.pl:
 
-/home/mzh/mipt/04/CC/plum/lib/std/os/exit.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/path.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/random.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/process.pl:
-
-/home/mzh/mipt/04/CC/plum/lib/std/os/signal.pl:
+src/core/tasks.pl:
 
 src/ui/places.pl:
 
-src/ui/root.pl:
-
 src/ui/common.pl:
+
+src/ui/root.pl:
 
 src/ui/main.pl:
 
 src/ui/preview.pl:
+
+src/screen/frame.pl:
+
+src/screen/bars.pl:
+
+src/screen/taskbox.pl:
+
+src/app/files.pl:
+
+src/app/open.pl:
+
+src/screen/keys.pl:

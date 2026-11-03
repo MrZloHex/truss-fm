@@ -86,8 +86,9 @@ obj/ui/main.o: \
   /home/mzh/mipt/04/CC/plum/lib/extern/socket.pl \
   /home/mzh/Projects/PLUM/modular/lib/ui/app.pl \
   src/ui/common.pl \
-  src/fs.pl \
-  src/look.pl
+  src/core/fs.pl \
+  src/ui/look.pl \
+  src/core/config.pl
 
 /home/mzh/mipt/04/CC/plum/lib/std/core/core.pl:
 
@@ -261,6 +262,8 @@ obj/ui/main.o: \
 
 src/ui/common.pl:
 
-src/fs.pl:
+src/core/fs.pl:
 
-src/look.pl:
+src/ui/look.pl:
+
+src/core/config.pl:
