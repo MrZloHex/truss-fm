@@ -1,8 +1,9 @@
-; places.pl -- the first column: places to go to, under headings. Home and
-; the bookmarks of ~/.config/pluf/places; the disks, by where they are
-; mounted. The cursor steps over the headings and the gaps; Enter opens a
-; place, ' and its key open it from any column. The place the program is
-; in is amber
+; places.pl -- the first column: places to go to, in blocks with a gap
+; between: PLACES (home, the standard folders, the config's), DEVICES (the
+; disks, by where they are mounted), TRASH (one row, with its item count),
+; BOOKMARKS (those of $XDG_CONFIG_HOME/trufm/places, else ~/.config/trufm/places). The cursor steps over the
+; headings and the gaps; Enter opens a place, ' and its key open it from any
+; column. The place the program is in is amber
 
 USE <std/core/core.pl>
 USE <std/core/str.pl>
@@ -20,6 +21,7 @@ USE <modular.pl>
 
 CONST I32 PLACE_USE_W = 4       ; a disk's use against the right border: 100%
 CONST I32 PLACE_KEY_W = 1       ; or a place's key
+CONST I32 PLACE_COUNT_W = 5     ; or the trash's item count
 CONST USIZE PLACE_LINE = 4096
 CONST U64 MOUNTS_MS = 2000      ; how often the mounts are looked at
 
@@ -35,6 +37,7 @@ TYPE Place: STRUCT
  | String path              ; where Enter goes; empty for a heading or a gap
  | String key               ; ' and this go here; may be empty
  | I32 used                 ; a disk's use in percent; -1: not a disk
+ | I32 count                ; the trash row: its items; -1: not that row
  | B1 mark                  ; from the bookmarks file: D there takes it off
  \_
 
@@ -45,6 +48,8 @@ TYPE PlacesPane: STRUCT
  | B1 jump                  ; ' was pressed: the next key names a place
  | U64 mounts               ; mounts_signature when the disks were read
  | U64 checked              ; now_ms they were last looked at
+ | I64 trash_sec            ; the trash's files folder's own time when read (-1: none):
+ | U32 trash_nsec           ;   an item put in or taken out changes it
  | String said              ; a word for the program to show: a bookmark
  |                          ;   taken off, or why not; empty: none
  \_
@@ -58,6 +63,7 @@ ABYSS place_add: [ @Vector<Place> v | PlaceKind k | @CONST C1 name | @CONST C1 p
  | r.path = (String.of)[ path ]
  | r.key = (String.of)[ key ]
  | r.used = used
+ | r.count = -1
  | (v.push)[ r ]
  \_
 
@@ -80,8 +86,28 @@ ABYSS dispose_places: [ @PlacesPane p ]
 
 ; where the bookmarks are kept, in `out`
 ABYSS bookmarks_file: [ @C1 out | USIZE cap ]
+ | Option<@CONST C1> st = (env)[ "XDG_CONFIG_HOME" ]
  | BufferSink b = (BufferSink.over)[ out | cap ]
- | (b.print)[ "%s/.config/pluf/places" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ | IF [ (st.is_some)[] && (st.unwrap)[]{0} == '/' ]
+ |  | (b.print)[ "%s/trufm/places" | (st.unwrap)[] ]
+ | ELSE
+ |  | (b.print)[ "%s/.config/trufm/places" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ |  \_
+ \_
+
+; the time of the trash's files folder, as it is now; -1 when there is none
+ABYSS trash_stamp: [ @I64 sec | @U32 nsec ]
+ | C1 bin{PLACE_LINE}
+ | (trash_home)[ bin | PLACE_LINE ]
+ | BufferSink tb = (BufferSink.over)[ bin + (str_len)[ bin AS @CONST C1 ] | PLACE_LINE - (str_len)[ bin AS @CONST C1 ] ]
+ | (tb.print)[ "/files" ]
+ | ?sec = -1
+ | ?nsec = 0
+ | Result<FileInfo | IoError> fi = (fs_info)[ bin AS @CONST C1 ]
+ | IF [ (fi.is_ok)[] ]
+ |  | ?sec = (fi.unwrap)[].modified
+ |  | ?nsec = (fi.unwrap)[].modified_ns
+ |  \_
  \_
 
 ; the row of the place at `path`; -1: there is none. A place is listed once
@@ -168,7 +194,7 @@ ABYSS place_line: [ @Vector<Place> v | @CONST C1 text | @CONST C1 home | B1 mark
  | (place_dir)[ v | name | at | key AS @CONST C1 | home | mark ]
  \_
 
-; ~/.config/pluf/places, what b writes: a place a line, as place_line has it
+; ~/.config/trufm/places, what b writes: a place a line, as place_line has it
 ABYSS bookmarks_read: [ @Vector<Place> v | @CONST C1 home ]
  | C1 file{PLACE_LINE}
  | (bookmarks_file)[ file | PLACE_LINE ]
@@ -243,11 +269,6 @@ ABYSS standard_read: [ @Vector<Place> v | @CONST C1 home ]
  |  |  \_
  |  \_
  | (place_dir)[ v | "/ root" | "/" | "/" | home | FALSE ]
- | C1 bin{PLACE_LINE}
- | (trash_home)[ bin | PLACE_LINE ]
- | BufferSink tb = (BufferSink.over)[ bin + (str_len)[ bin AS @CONST C1 ] | PLACE_LINE - (str_len)[ bin AS @CONST C1 ] ]
- | (tb.print)[ "/files" ]
- | (place_dir)[ v | "Trash" | bin AS @CONST C1 | "t" | home | FALSE ]
  \_
 
 ; a disk that udisks (udiskie, a desktop) mounted: under /run/media/<user>/
@@ -279,8 +300,52 @@ ABYSS disks_read: [ @Vector<Place> v ]
  |  \_
  \_
 
-; PLACES: home, the standard ones, the config's, the bookmarks; DEVICES:
-; the disks. The config says which of these there are
+; the home trash's files as one row, TRASH, with how many there are, after
+; a gap; none if there is no such folder, or its path is a place already
+ABYSS trash_row: [ @Vector<Place> v ]
+ | C1 bin{PLACE_LINE}
+ | (trash_home)[ bin | PLACE_LINE ]
+ | BufferSink tb = (BufferSink.over)[ bin + (str_len)[ bin AS @CONST C1 ] | PLACE_LINE - (str_len)[ bin AS @CONST C1 ] ]
+ | (tb.print)[ "/files" ]
+ | Result<FileInfo | IoError> fi = (fs_info)[ bin AS @CONST C1 ]
+ | IF [ (fi.is_err)[] || (fi.unwrap)[].kind != FS_DIR || (place_known)[ v | bin AS @CONST C1 ] >= 0 ]
+ |  | RET []
+ |  \_
+ | I32 items = 0
+ | Result<os:Dir | IoError> d = (os:Dir.open)[ bin AS @CONST C1 ]
+ | IF [ (d.is_ok)[] ]
+ |  | os:Dir dir = (d.unwrap)[]
+ |  | os:DirEntry e
+ |  | WHILE [ (dir.next)[ @e ] ]
+ |  |  | items += 1
+ |  |  \_
+ |  | (dir.close)[]
+ |  \_
+ | (place_add)[ v | PK_GAP | "" | "" | "" | -1 ]
+ | (place_add)[ v | PK_PLACE | "TRASH" | bin AS @CONST C1 | "t" | -1 ]
+ | (v.at)[ (v.size)[] - 1 ].count = items
+ \_
+
+; BOOKMARKS and the bookmarks file's places after a gap; a bookmark that is
+; a place already only marks that one, and with none left, no heading
+ABYSS bookmark_rows: [ @Vector<Place> v | @CONST C1 home ]
+ | USIZE was = (v.size)[]
+ | (place_add)[ v | PK_GAP | "" | "" | "" | -1 ]
+ | (place_add)[ v | PK_HEAD | "BOOKMARKS" | "" | "" | -1 ]
+ | (bookmarks_read)[ v | home ]
+ | IF [ (v.size)[] == was + 2 ]
+ |  | FOR [ I32 i = 0 | i < 2 | i += 1 ]
+ |  |  | Place r
+ |  |  | (v.pop)[ @r ]
+ |  |  | (r.name.deinit)[]
+ |  |  | (r.path.deinit)[]
+ |  |  | (r.key.deinit)[]
+ |  |  \_
+ |  \_
+ \_
+
+; PLACES: home, the standard ones, the config's; DEVICES: the disks; TRASH;
+; BOOKMARKS. The config says which of these there are
 ABYSS places_read: [ @PlacesPane p ]
  | (places_clear)[ @(p.rows) ]
  | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
@@ -292,12 +357,16 @@ ABYSS places_read: [ @PlacesPane p ]
  | FOR [ USIZE i = 0 | i < (CFG.places.size)[] | i += 1 ]
  |  | (place_line)[ @(p.rows) | ((CFG.places.at)[ i ].cstr)[] | home | FALSE ]
  |  \_
- | (bookmarks_read)[ @(p.rows) | home ]
  | IF [ CFG.devices ]
  |  | (place_add)[ @(p.rows) | PK_GAP | "" | "" | "" | -1 ]
  |  | (place_add)[ @(p.rows) | PK_HEAD | "DEVICES" | "" | "" | -1 ]
  |  | (disks_read)[ @(p.rows) ]
  |  \_
+ | IF [ CFG.std_places ]
+ |  | (trash_row)[ @(p.rows) ]
+ |  \_
+ | (bookmark_rows)[ @(p.rows) | home ]
+ | (trash_stamp)[ @(p.trash_sec) | @(p.trash_nsec) ]
  | p.mounts = (mounts_signature)[]
  | p.checked = (now_ms)[]
  | p.read = TRUE
@@ -313,16 +382,12 @@ I32 bookmark_add: [ @PlacesPane p | @CONST C1 cwd ]
  | IF [ (place_known)[ @(p.rows) | cwd ] >= 0 ]
  |  | RET [ BM_THERE ]
  |  \_
- | @CONST C1 home = ((env)[ "HOME" ].unwrap_or)[ "/" ]
- | C1 dir{PLACE_LINE}
- | BufferSink d = (BufferSink.over)[ dir | PLACE_LINE ]
- | (d.print)[ "%s/.config" | home ]
- | (fs_make_dir)[ dir AS @CONST C1 ]
- | (d.print)[ "/pluf" ]
- | (fs_make_dir)[ dir AS @CONST C1 ]
- |
  | C1 file{PLACE_LINE}
  | (bookmarks_file)[ file | PLACE_LINE ]
+ | ; the file's own folder, and what is missing above it
+ | String up = (get_parent_path)[ file AS @CONST C1 ]
+ | POSTLUDE (up.deinit)[]
+ | (fs_make_dirs)[ (up.cstr)[] ]
  | String text
  | POSTLUDE (text.deinit)[]
  | IF [ ((read_file)[ file AS @CONST C1 | @text ].is_err)[] ]
@@ -511,10 +576,19 @@ ABYSS jump_keys: [ @Ui ui | @PlacesPane p | @String go ]
 ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  | ; a disk mounted or taken away since: read again. Looked at now and then:
  | ; the program wakes at least once a second
- | IF [ p.read && CFG.devices && (now_ms)[] - p.checked > MOUNTS_MS ]
+ | IF [ p.read && (now_ms)[] - p.checked > MOUNTS_MS ]
  |  | p.checked = (now_ms)[]
- |  | IF [ (mounts_signature)[] != p.mounts ]
+ |  | IF [ CFG.devices && (mounts_signature)[] != p.mounts ]
  |  |  | p.read = FALSE
+ |  |  \_
+ |  | ; the trash filled or emptied from outside
+ |  | IF [ CFG.std_places ]
+ |  |  | I64 sec
+ |  |  | U32 nsec
+ |  |  | (trash_stamp)[ @sec | @nsec ]
+ |  |  | IF [ sec != p.trash_sec || nsec != p.trash_nsec ]
+ |  |  |  | p.read = FALSE
+ |  |  |  \_
  |  |  \_
  |  \_
  | IF [ !(p.read) ]
@@ -533,7 +607,7 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  | (move_keys)[ ui | @(p.list) ]
  |  \_
  |
- | (ui.box)[ "" | (pct)[ CFG.places_width ] | GROW ]
+ | ((ui.box)[ "" | (pct)[ CFG.places_width ] | GROW ].pads)[ ui.theme.box_pad | 0 | 0 | 0 ]
  | ; on a bookmark, with the keys: how to take it off, in the bottom edge
  | IF [ (ui.focused)[ id ] && p.list.cursor >= 0 && p.list.cursor < n && (p.rows.at)[ p.list.cursor AS USIZE ].mark ]
  |  | (ui.subtitle)[]
@@ -565,11 +639,16 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  | @Place r = (p.rows.at)[ i AS USIZE ]
  |  | IF [ r.kind == PK_PLACE ]
  |  |  | (ui.list_row)[ @(p.list) | i | id ]
- |  |  | I32 side = SELECT [ r.used >= 0 | PLACE_USE_W | PLACE_KEY_W ]
+ |  |  | I32 side = SELECT [ r.count >= 0 | PLACE_COUNT_W | SELECT [ r.used >= 0 | PLACE_USE_W | PLACE_KEY_W ] ]
  |  |  | I32 name_w = SELECT [ inner - side < NAME_MIN | NAME_MIN | inner - side ]
- |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == here | AMBER | TEXT ] ] | (r.name.cstr)[] | name_w | TRUE ]
+ |  |  | (ui.put_cell)[ (fg)[ SELECT [ i == here | AMBER | SELECT [ r.count >= 0 | DIM | TEXT ] ] ] | (r.name.cstr)[] | name_w | TRUE ]
  |  |  | (ui.put)[ (fg)[ DIM ] | " " ]
- |  |  | IF [ r.used >= 0 ]
+ |  |  | IF [ r.count >= 0 ]
+ |  |  |  | C1 num{12}
+ |  |  |  | BufferSink nb = (BufferSink.over)[ num | 12 ]
+ |  |  |  | (nb.print)[ "%d" | r.count ]
+ |  |  |  | (ui.put_cell)[ (fg)[ DIM ] | num AS @CONST C1 | PLACE_COUNT_W | FALSE ]
+ |  |  | ELIF [ r.used >= 0 ]
  |  |  |  | C1 use{8}
  |  |  |  | BufferSink b = (BufferSink.over)[ use | 8 ]
  |  |  |  | (b.print)[ "%d%%" | r.used ]

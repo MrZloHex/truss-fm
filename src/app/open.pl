@@ -1,6 +1,6 @@
 ; open.pl -- files opened with programs, as the config's open.<exts> lines
 ; say: the first rule with the file's extension, else open.*, else
-; xdg-open. A program that wants the terminal (term:) gets it -- pluf steps
+; xdg-open. A program that wants the terminal (term:) gets it -- trufm steps
 ; aside till it ends, or in a window opens a terminal for it; any other is
 ; started in the background and left to run.
 ;
@@ -26,11 +26,14 @@ CONST @CONST C1 OPEN_FALLBACK = "xdg-open"
 
 ; how a terminal program is run where there is no terminal to step aside
 ; from: in a new one, $TERMINAL or else xterm; and how a program is left
-; to run: away from pluf's terminal, so it cannot read its keys
-CONST @CONST C1 SH_IN_TERMINAL = "l=$1; shift; (${TERMINAL:-xterm} -e sh -c \"$l\" pluf \"$@\") </dev/null >/dev/null 2>&1 &"
-CONST @CONST C1 SH_IN_BACKGROUND = "l=$1; shift; (sh -c \"$l\" pluf \"$@\") </dev/null >/dev/null 2>&1 &"
+; to run: away from trufm's terminal, so it cannot read its keys
+CONST @CONST C1 SH_IN_TERMINAL = "l=$1; shift; (${TERMINAL:-xterm} -e sh -c \"$l\" trufm \"$@\") </dev/null >/dev/null 2>&1 &"
+; a command typed after : -- run in the folder ($1), the chosen files after
+; it, then waits for Enter, so what it printed can be read
+CONST @CONST C1 SH_SHELL = "cd -- \"$1\" && { c=$2; shift 2; sh -c \"$c\" sh \"$@\"; }; s=$?; echo; printf '[exit %s] Enter goes back to trufm ' $s; read _ </dev/tty"
+CONST @CONST C1 SH_IN_BACKGROUND = "l=$1; shift; (sh -c \"$l\" trufm \"$@\") </dev/null >/dev/null 2>&1 &"
 
-; `files` opened with `cmd`; `term`: in this terminal, pluf stepped aside
+; `files` opened with `cmd`; `term`: in this terminal, trufm stepped aside
 ; till it ends -- or, in a window, in a new terminal. In `why` what went
 ; wrong; FALSE then
 B1 open_with: [ @Ui ui | @CONST C1 cmd | B1 term | @Vector<String> files | @String why ]
@@ -44,19 +47,60 @@ B1 open_with: [ @Ui ui | @CONST C1 cmd | B1 term | @Vector<String> files | @Stri
  | POSTLUDE (line.deinit)[]
  | B1 here = term && (ui.can_pause)[]
  |
- | ; sh -c <script> pluf [<line>] <files>... NULL
+ | ; sh -c <script> trufm [<line>] <files>... NULL
  | Vector<@CONST C1> argv
  | POSTLUDE (argv.deinit)[]
  | (argv.push)[ "sh" ]
  | (argv.push)[ "-c" ]
  | IF [ here ]
  |  | (argv.push)[ (line.cstr)[] ]
- |  | (argv.push)[ "pluf" ]
+ |  | (argv.push)[ "trufm" ]
  | ELSE
  |  | (argv.push)[ SELECT [ term | SH_IN_TERMINAL | SH_IN_BACKGROUND ] ]
- |  | (argv.push)[ "pluf" ]
+ |  | (argv.push)[ "trufm" ]
  |  | (argv.push)[ (line.cstr)[] ]
  |  \_
+ | FOR [ USIZE i = 0 | i < (files.size)[] | i += 1 ]
+ |  | (argv.push)[ ((files.at)[ i ].cstr)[] ]
+ |  \_
+ | (argv.push)[ NULL ]
+ |
+ | IF [ here ]
+ |  | (ui.pause)[ TRUE ]
+ |  \_
+ | Result<ExitStatus | IoError> r = (process_run)[ argv.data AS @CONST @CONST C1 ]
+ | IF [ here ]
+ |  | (ui.pause)[ FALSE ]
+ |  \_
+ | IF [ (r.is_err)[] ]
+ |  | (why.deinit)[]
+ |  | ?why = (String.of)[ (io_error_text)[ (r.error)[] ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ TRUE ]
+ \_
+
+; `cmd` run by sh in `dir`, `files` as "$@": in this terminal, trufm stepped
+; aside till Enter after it -- or, in a window, in a new terminal. In `why`
+; what went wrong; FALSE then
+B1 shell_with: [ @Ui ui | @CONST C1 dir | @CONST C1 cmd | @Vector<String> files | @String why ]
+ | B1 here = (ui.can_pause)[]
+ |
+ | ; sh -c <script> trufm [<script>] <dir> <cmd> <files>... NULL
+ | Vector<@CONST C1> argv
+ | POSTLUDE (argv.deinit)[]
+ | (argv.push)[ "sh" ]
+ | (argv.push)[ "-c" ]
+ | IF [ here ]
+ |  | (argv.push)[ SH_SHELL ]
+ |  | (argv.push)[ "trufm" ]
+ | ELSE
+ |  | (argv.push)[ SH_IN_TERMINAL ]
+ |  | (argv.push)[ "trufm" ]
+ |  | (argv.push)[ SH_SHELL ]
+ |  \_
+ | (argv.push)[ dir ]
+ | (argv.push)[ cmd ]
  | FOR [ USIZE i = 0 | i < (files.size)[] | i += 1 ]
  |  | (argv.push)[ ((files.at)[ i ].cstr)[] ]
  |  \_
@@ -176,5 +220,35 @@ ABYSS open_run: [ @AppData me | @Ui ui | @CONST C1 cmd | B1 term ]
  |  \_
  | (strings_clear)[ @(me.pending) ]
  | ; what it did may have changed the folder: an editor saved, a tar made
+ | (app_refresh)[ me | TRUE ]
+ \_
+
+; --- : a command line --------------------------------------------------------
+
+ABYSS shell_ask: [ @AppData me ]
+ | (input_set)[ @(me.field) | "" ]
+ | me.prompt = PR_SHELL
+ \_
+
+; the command typed after :, run in the folder, the rows chosen in visual or
+; the cursor's file as "$@"
+ABYSS shell_typed: [ @AppData me | @Ui ui | @CONST C1 typed ]
+ | me.prompt = PR_NONE
+ | @CONST C1 cmd = typed
+ | WHILE [ ?cmd == ' ' ]
+ |  | cmd += 1
+ |  \_
+ | IF [ cmd{0} == '\0' ]
+ |  | RET []
+ |  \_
+ | (strings_clear)[ @(me.pending) ]
+ | (main_selection)[ @(me.listing) | @(me.pending) ]
+ | String why = (String.of)[ "" ]
+ | POSTLUDE (why.deinit)[]
+ | IF [ !((shell_with)[ ui | (me.cwd.cstr)[] | cmd | @(me.pending) | @why ]) ]
+ |  | (app_note)[ me | (why.cstr)[] ]
+ |  \_
+ | (strings_clear)[ @(me.pending) ]
+ | ; it may have changed anything: every column read again
  | (app_refresh)[ me | TRUE ]
  \_

@@ -1,4 +1,4 @@
-APP      := pluf
+APP      := trufm
 PLC      ?= $(HOME)/mipt/04/CC/plum/bin/plc
 MODULAR  ?= ../../PLUM/modular
 PLCFLAGS ?= -O2 -g
@@ -77,15 +77,15 @@ obj/test/%: obj/test/%.o $(LIB_OBJ) $(LIBMOD)
 
 -include $(OBJ:.o=.d) $(TESTS:%=obj/test/%.d)
 
-# run and gui read the repository's own config, not ~/.config/pluf/config;
+# run and gui read the repository's own config, not ~/.config/trufm/config;
 # make run CONF=other.conf for another
-CONF ?= pluf.conf
+CONF ?= trufm.conf
 
 run: $(APP)
-	@PLUF_CONFIG=$(abspath $(CONF)) ./$(APP) $(ARGS)
+	@TRUFM_CONFIG=$(abspath $(CONF)) ./$(APP) $(ARGS)
 
 gui: $(APP)
-	@PLUF_CONFIG=$(abspath $(CONF)) ./$(APP) --gui $(ARGS)
+	@TRUFM_CONFIG=$(abspath $(CONF)) ./$(APP) --gui $(ARGS)
 
 test: $(APP) $(TESTS:%=obj/test/%)
 	@for t in $(TESTS); do printf '  %s%-5s%s %s\n' '$(BOLD)$(BLUE)' TEST '$(RST)' "$$t"; obj/test/$$t || exit 1; done

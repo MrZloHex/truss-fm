@@ -16,10 +16,12 @@ USE <std/os/time.pl>
 !USES <sys.pl>
 !USES <job.pl>
 !USES <extract.pl>
+!USES <command.pl>
+!USES <pace.pl>
 
 CONST U64 TASK_SLICE_MS = 12    ; the work done in one frame, at most
 CONST U64 TASK_KEEP_MS = 3000   ; a task that ended is shown this long
-CONST U64 TASK_ERR_MS = 12000   ; one that failed, this long
+CONST USIZE BAD_MAX = 1000      ; failed steps kept for a retry, at most
 CONST U64 ENTRY_WEIGHT = 4096   ; a folder or a link counts as this many bytes
 CONST USIZE COPY_CHUNK = 1048576
 CONST I32 EXDEV = 18            ; rename: not on one file system
@@ -38,6 +40,7 @@ TYPE TaskKind: ENUM
  | TK_MOVE
  | TK_DELETE
  | TK_EXTRACT       ; an archive unpacked, by a program: extract.pl
+ | TK_RUN           ; a program run on the files: command.pl
  \_
 
 TYPE StepKind: ENUM
@@ -49,6 +52,7 @@ TYPE StepKind: ENUM
  | SK_WEIGH         ; src counted into the total, a folder by its entries in
  |                  ;   turn: no walk of a whole tree in one frame
  | SK_SEAL          ; src, a folder copied: its own mode and time at last
+ | SK_FORGET        ; src, a trash's info file: removed once dst, its item, is gone
  \_
 
 TYPE Step: STRUCT
@@ -82,12 +86,26 @@ TYPE Task: STRUCT
  | B1 over                  ; a name taken is overwritten, not a failure
  | Job job                  ; TK_EXTRACT: the program unpacking it
  | B1 extracting            ;   and it at work
+ | B1 running_cmd           ; TK_RUN: its program at work (it is `job`'s too)
  | String dest              ;   the folder it unpacks into -- or, moved up,
  |                          ;   what that held
  | String into              ;   the folder that folder is in
  | String replace           ; the file `target` is written aside for: renamed
  |                          ;   over it once whole; empty: none
+ | U32 id                   ; told from the other tasks, for good
+ | B1 paused                ; no work is done: a program's is stopped
+ | B1 copied                ; a file was copied (a move may be renames only)
+ | U64 win_at               ; the speed: when it was looked at last, 0: not yet
+ | U64 win_done             ;   and what was done by then
+ | U64 rate                 ;   smoothed, in thousandths of a unit a second
+ | B1 rated                 ;   and known
+ | String cur_src           ; the step at work, for a retry: its two paths
+ | String cur_dst
+ | Vector<String> bad_src   ; the steps that failed (BAD_MAX first), by their
+ | Vector<String> bad_dst   ;   two paths
  \_
+
+LOCAL U32 task_seq
 
 ; --- paths ----------------------------------------------------------------------
 
@@ -152,6 +170,10 @@ Task task_new: [ TaskKind k ]
  | t.replace = (String.of)[ "" ]
  | t.dest = (String.of)[ "" ]
  | t.into = (String.of)[ "" ]
+ | t.cur_src = (String.of)[ "" ]
+ | t.cur_dst = (String.of)[ "" ]
+ | task_seq += 1
+ | t.id = task_seq
  | t.in = -1
  | t.out = -1
  | RET [ t ]
@@ -175,6 +197,21 @@ ABYSS task_free: [ @Task t ]
  | (t.job.out.deinit)[]
  | (t.dest.deinit)[]
  | (t.into.deinit)[]
+ | (t.cur_src.deinit)[]
+ | (t.cur_dst.deinit)[]
+ | (task_bad_clear)[ t ]
+ | (t.bad_src.deinit)[]
+ | (t.bad_dst.deinit)[]
+ \_
+
+; the failed steps forgotten
+ABYSS task_bad_clear: [ @Task t ]
+ | FOR [ USIZE i = 0 | i < (t.bad_src.size)[] | i += 1 ]
+ |  | ((t.bad_src.at)[ i ].deinit)[]
+ |  | ((t.bad_dst.at)[ i ].deinit)[]
+ |  \_
+ | (t.bad_src.clear)[]
+ | (t.bad_dst.clear)[]
  \_
 
 ABYSS task_title: [ @Task t | @CONST C1 verb | USIZE n | @CONST C1 one | @CONST C1 into ]
@@ -248,8 +285,10 @@ Task task_transfer: [ B1 move | @Vector<String> paths | @CONST C1 into | I32 cla
  | RET [ t ]
  \_
 
-; `paths` deleted, and all in them: for good, not to a trash
-Task task_delete: [ @Vector<String> paths ]
+; `paths` deleted, and all in them: for good, not to a trash. `infos`, if
+; not NULL, is a string for each of them: the info file of a trash item,
+; removed once the item is gone, or "" for none
+Task task_delete: [ @Vector<String> paths | @Vector<String> infos ]
  | Task t = (task_new)[ TK_DELETE ]
  | USIZE n = (paths.size)[]
  | @CONST C1 one = ""
@@ -259,6 +298,9 @@ Task task_delete: [ @Vector<String> paths ]
  | (task_title)[ @t | "delete" | n | one | NULL ]
  | FOR [ USIZE k = n | k > 0 | k -= 1 ]
  |  | @CONST C1 src = ((paths.at)[ k - 1 ].cstr)[]
+ |  | IF [ infos != NULL && ((infos.at)[ k - 1 ].size)[] > 0 ]
+ |  |  | (step_push)[ @t | SK_FORGET | ((infos.at)[ k - 1 ].cstr)[] | src | 0 ]
+ |  |  \_
  |  | (step_push)[ @t | SK_DELETE | src | "" | 0 ]
  |  \_
  | FOR [ USIZE k = 0 | k < n | k += 1 ]
@@ -435,7 +477,7 @@ ABYSS do_copy: [ @Task t | @CONST C1 src | @CONST C1 dst ]
  |  | IF [ !merge ]
  |  |  | String up = (get_parent_path)[ dst ]
  |  |  | String part = (get_dirname)[ dst ]
- |  |  | (part.append)[ ".pluf-part" ]
+ |  |  | (part.append)[ ".trufm-part" ]
  |  |  | (aside.deinit)[]
  |  |  | aside = (free_name)[ (up.cstr)[] | (part.cstr)[] ]
  |  |  | (up.deinit)[]
@@ -587,10 +629,20 @@ ABYSS do_delete: [ @Task t | @CONST C1 src ]
  |  \_
  \_
 
+; the step at work, if it failed since `before` failures: kept for a retry
+ABYSS task_mark: [ @Task t | I32 before ]
+ | IF [ t.failed > before && (t.cur_src.size)[] > 0 && (t.bad_src.size)[] < BAD_MAX ]
+ |  | (t.bad_src.push)[ (String.of)[ (t.cur_src.cstr)[] ] ]
+ |  | (t.bad_dst.push)[ (String.of)[ (t.cur_dst.cstr)[] ] ]
+ |  \_
+ \_
+
 ; the next step, or the next chunk of the file being copied
 ABYSS task_step: [ @Task t ]
  | IF [ t.in >= 0 ]
+ |  | I32 was = t.failed
  |  | (copy_chunk)[ t ]
+ |  | (task_mark)[ t | was ]
  |  | RET []
  |  \_
  | Step s
@@ -600,6 +652,15 @@ ABYSS task_step: [ @Task t ]
  | POSTLUDE (step_free)[ @s ]
  | @CONST C1 src = (s.src.cstr)[]
  | t.counting = s.kind == SK_WEIGH
+ | ; a step a retry can make again is noted, in case it fails
+ | I32 before = t.failed
+ | B1 redo = s.kind == SK_COPY || s.kind == SK_MOVE || s.kind == SK_DELETE || s.kind == SK_RMDIR
+ | IF [ redo ]
+ |  | (t.cur_src.deinit)[]
+ |  | t.cur_src = (String.of)[ src ]
+ |  | (t.cur_dst.deinit)[]
+ |  | t.cur_dst = (String.of)[ (s.dst.cstr)[] ]
+ |  \_
  | IF [ s.kind == SK_WEIGH ]
  |  | (do_weigh)[ t | src | s.weight == 1 ]
  | ELIF [ s.kind == SK_SEAL ]
@@ -619,11 +680,18 @@ ABYSS task_step: [ @Task t ]
  |  | IF [ t.kind == TK_DELETE ]
  |  |  | t.done += 1
  |  |  \_
+ | ELIF [ s.kind == SK_FORGET ]
+ |  | IF [ !((taken)[ (s.dst.cstr)[] ]) ]
+ |  |  | (fs_remove)[ src ]
+ |  |  \_
  | ELIF [ s.kind == SK_DROP ]
  |  | ; `weight`: how many had failed before its copy began
  |  | IF [ (t.failed AS U64) == s.weight ]
  |  |  | (step_push)[ t | SK_DELETE | src | "" | 0 ]
  |  |  \_
+ |  \_
+ | IF [ redo ]
+ |  | (task_mark)[ t | before ]
  |  \_
  \_
 
@@ -631,16 +699,166 @@ B1 task_running: [ @CONST Task t ]
  | RET [ t.ended == 0 ]
  \_
 
-; every task worked on for a slice of time; those that ended long enough
-; ago taken off. TRUE: something on the disk changed
+; ended with failures: kept in the box, to retry or dismiss
+B1 task_held: [ @CONST Task t ]
+ | RET [ t.ended != 0 && t.failed > 0 ]
+ \_
+
+; --- control --------------------------------------------------------------------
+
+; stopped, or going on again. A program's work is stopped with all it started;
+; the time stopped is not in the speed
+ABYSS task_pause: [ @Task t | B1 stop ]
+ | IF [ !((task_running)[ t ]) || t.paused == stop ]
+ |  | RET []
+ |  \_
+ | t.paused = stop
+ | IF [ t.extracting || t.running_cmd ]
+ |  | (job_pause)[ @(t.job) | stop ]
+ |  \_
+ | t.win_at = 0
+ \_
+
+; given up at once. What was written of the file being copied is taken away,
+; the steps left are dropped without being done -- so a move across disks
+; never drops a source whose copy did not end -- but a folder's mode and time
+; are put back, and a trash item's info file goes with an item that is gone.
+; An unpacking's program is killed; its folder is the caller's to remove
+ABYSS task_cancel: [ @Task t ]
+ | IF [ !((task_running)[ t ]) ]
+ |  | RET []
+ |  \_
+ | IF [ t.in >= 0 ]
+ |  | (copy_end)[ t | TRUE ]
+ |  \_
+ | Step s
+ | WHILE [ (t.steps.pop)[ @s ] ]
+ |  | IF [ s.kind == SK_SEAL ]
+ |  |  | (px_chmod)[ (s.src.cstr)[] | s.mode ]
+ |  |  | (set_time)[ (s.src.cstr)[] | s.sec | s.nsec ]
+ |  | ELIF [ s.kind == SK_FORGET && !((taken)[ (s.dst.cstr)[] ]) ]
+ |  |  | (fs_remove)[ (s.src.cstr)[] ]
+ |  |  \_
+ |  | (step_free)[ @s ]
+ |  \_
+ | (job_stop)[ @(t.job) ]
+ | t.extracting = FALSE
+ | t.running_cmd = FALSE
+ | t.paused = FALSE
+ | (task_bad_clear)[ t ]
+ | t.ended = (now_ms)[]
+ \_
+
+; the task with this id, or -1
+I32 task_index: [ @Vector<Task> ts | U32 id ]
+ | FOR [ USIZE i = 0 | i < (ts.size)[] | i += 1 ]
+ |  | IF [ (ts.at)[ i ].id == id ]
+ |  |  | RET [ i AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; the task the keys act on: `want` if it runs, else the oldest that runs;
+; -1: none
+I32 task_pick: [ @Vector<Task> ts | U32 want ]
+ | I32 i = (task_index)[ ts | want ]
+ | IF [ i >= 0 && (task_running)[ (ts.at)[ i AS USIZE ] ] ]
+ |  | RET [ i ]
+ |  \_
+ | FOR [ USIZE k = 0 | k < (ts.size)[] | k += 1 ]
+ |  | IF [ (task_running)[ (ts.at)[ k ] ] ]
+ |  |  | RET [ k AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; the kept task with failures R and Esc act on: `want` if it is one, else
+; the oldest; -1: none
+I32 task_pick_held: [ @Vector<Task> ts | U32 want ]
+ | I32 i = (task_index)[ ts | want ]
+ | IF [ i >= 0 && (task_held)[ (ts.at)[ i AS USIZE ] ] ]
+ |  | RET [ i ]
+ |  \_
+ | FOR [ USIZE k = 0 | k < (ts.size)[] | k += 1 ]
+ |  | IF [ (task_held)[ (ts.at)[ k ] ] ]
+ |  |  | RET [ k AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; a task to do again what `t` failed at, and only that, in the same way. TK_COPY
+; and TK_MOVE as they were; a move's failed copy of one file across disks is a
+; move again, which copies and drops. Overwrite is on: what failed is not
+; there, or is half of a folder to merge into
+Task task_retry: [ @Task t ]
+ | Task r = (task_new)[ t.kind ]
+ | r.over = TRUE
+ | (r.title.deinit)[]
+ | r.title = (String.of)[ "retry " ]
+ | (r.title.append)[ (t.title.cstr)[] ]
+ | StepKind k = SELECT [ t.kind == TK_MOVE | SK_MOVE | SELECT [ t.kind == TK_DELETE | SK_DELETE | SK_COPY ] ]
+ | USIZE n = (t.bad_src.size)[]
+ | FOR [ USIZE i = n | i > 0 | i -= 1 ]
+ |  | (step_push)[ @r | k | ((t.bad_src.at)[ i - 1 ].cstr)[] | ((t.bad_dst.at)[ i - 1 ].cstr)[] | SELECT [ t.kind == TK_MOVE | ENTRY_WEIGHT | 0 ] ]
+ |  | IF [ t.kind == TK_MOVE ]
+ |  |  | r.total += ENTRY_WEIGHT
+ |  |  \_
+ |  \_
+ | IF [ t.kind != TK_MOVE ]
+ |  | FOR [ USIZE i = 0 | i < n | i += 1 ]
+ |  |  | (step_push)[ @r | SK_WEIGH | ((t.bad_src.at)[ i ].cstr)[] | "" | SELECT [ t.kind == TK_DELETE | 1 | 0 ] ]
+ |  |  \_
+ |  \_
+ | RET [ r ]
+ \_
+
+; --- running --------------------------------------------------------------------
+
+; the speed looked at once in PACE_WINDOW_MS, mixed into the old; not while
+; the work is only being sized
+ABYSS task_pace: [ @Task t ]
+ | U64 now = (now_ms)[]
+ | IF [ t.win_at == 0 || t.counting ]
+ |  | t.win_at = now
+ |  | t.win_done = t.done
+ |  | RET []
+ |  \_
+ | IF [ now - t.win_at < PACE_WINDOW_MS ]
+ |  | RET []
+ |  \_
+ | U64 more = SELECT [ t.done >= t.win_done | t.done - t.win_done | 0 ]
+ | t.rate = (pace_mix)[ t.rate | t.rated | more | now - t.win_at ]
+ | t.rated = TRUE
+ | t.win_at = now
+ | t.win_done = t.done
+ \_
+
+; every task worked on for a slice of time, each its own; those that ended
+; long enough ago taken off, but not those with failures. TRUE: something
+; on the disk changed
 B1 tasks_run: [ @Vector<Task> ts ]
- | U64 start = (now_ms)[]
  | B1 changed = FALSE
  | FOR [ USIZE i = 0 | i < (ts.size)[] | i += 1 ]
  |  | @Task t = (ts.at)[ i ]
+ |  | U64 start = (now_ms)[]
+ |  | ; stopped: no work, and nothing to wake for
+ |  | IF [ t.paused && (task_running)[ t ] ]
+ |  |  | CONTINUE
+ |  |  \_
  |  | ; an extraction: its program's work, not steps
  |  | IF [ t.extracting && (task_running)[ t ] ]
  |  |  | IF [ (extract_step)[ t ] ]
+ |  |  |  | t.ended = (now_ms)[]
+ |  |  |  \_
+ |  |  | changed = TRUE
+ |  |  | CONTINUE
+ |  |  \_
+ |  | ; a program run on files: its work too
+ |  | IF [ t.running_cmd && (task_running)[ t ] ]
+ |  |  | IF [ (command_step)[ t ] ]
  |  |  |  | t.ended = (now_ms)[]
  |  |  |  \_
  |  |  | changed = TRUE
@@ -656,13 +874,15 @@ B1 tasks_run: [ @Vector<Task> ts ]
  |  |  | (task_step)[ t ]
  |  |  | changed = TRUE
  |  |  \_
+ |  | IF [ (task_running)[ t ] ]
+ |  |  | (task_pace)[ t ]
+ |  |  \_
  |  \_
  |
  | USIZE i = 0
  | WHILE [ i < (ts.size)[] ]
  |  | @Task t = (ts.at)[ i ]
- |  | U64 keep = SELECT [ t.failed > 0 | TASK_ERR_MS | TASK_KEEP_MS ]
- |  | IF [ !((task_running)[ t ]) && (now_ms)[] - t.ended > keep ]
+ |  | IF [ !((task_running)[ t ]) && !((task_held)[ t ]) && (now_ms)[] - t.ended > TASK_KEEP_MS ]
  |  |  | Task gone = (ts.remove)[ i ]
  |  |  | (task_free)[ @gone ]
  |  |  | changed = TRUE
@@ -673,10 +893,10 @@ B1 tasks_run: [ @Vector<Task> ts ]
  | RET [ changed ]
  \_
 
-; is any task still at work?
+; is any task at work? One stopped is not
 B1 tasks_busy: [ @Vector<Task> ts ]
  | FOR [ USIZE i = 0 | i < (ts.size)[] | i += 1 ]
- |  | IF [ (task_running)[ (ts.at)[ i ] ] ]
+ |  | IF [ (task_running)[ (ts.at)[ i ] ] && !((ts.at)[ i ].paused) ]
  |  |  | RET [ TRUE ]
  |  |  \_
  |  \_

@@ -183,7 +183,7 @@ B1 program_there: [ @CONST C1 cmd ]
  |  | n += 1
  |  \_
  | word{n} = '\0'
- | @CONST C1 argv{} = [ "sh" | "-c" | "eval \"set -- $1\" 2>/dev/null && command -v \"$1\" >/dev/null 2>&1" | "pluf" | word AS @CONST C1 | NULL ]
+ | @CONST C1 argv{} = [ "sh" | "-c" | "eval \"set -- $1\" 2>/dev/null && command -v \"$1\" >/dev/null 2>&1" | "trufm" | word AS @CONST C1 | NULL ]
  | Result<ExitStatus | IoError> r = (process_run)[ argv ]
  | RET [ (r.is_ok)[] && (r.unwrap)[].exited && (r.unwrap)[].code == 0 ]
  \_

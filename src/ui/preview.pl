@@ -13,6 +13,8 @@ USE <modular.pl>
 !USES <common.pl>
 !USES <main.pl>
 !USES <../core/fs.pl>
+!USES <../core/sys.pl>
+!USES <../core/text.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
 !USES <../core/rules.pl>
@@ -53,6 +55,8 @@ TYPE PreviewPane: STRUCT
  | Vector<FileRecord> files ; a folder's listing
  | B1 want_open             ; ↲ OPEN clicked: the program sees to it
  | B1 want_with             ; o WITH clicked
+ | B1 props                 ; i : the file's facts in place of its preview
+ | B1 diff                  ; = : what git says changed in the file, in its place
  |
  | Job job                  ; the previewer the config gave this file, if any
  | B1 job_image             ; image: what it prints is a picture
@@ -66,6 +70,7 @@ TYPE PreviewPane: STRUCT
 ; what is kept of the last file, so the next can be read
 ABYSS preview_forget: [ @PreviewPane p ]
  | (p.entry.name.deinit)[]
+ | (p.entry.origin.deinit)[]
  | (records_clear)[ @(p.files) ]
  | IF [ p.has_img ]
  |  | (image_free)[ @(p.img) ]
@@ -81,6 +86,12 @@ ABYSS preview_forget: [ @PreviewPane p ]
  | p.head_len = 0
  | p.lines = 0
  | p.mode = 0
+ \_
+
+; the file under the cursor read again, as it is when the cursor comes to it
+ABYSS preview_redo: [ @PreviewPane p ]
+ | (p.path.deinit)[]
+ | p.path = (String.of)[ "" ]
  \_
 
 ABYSS dispose_preview: [ @PreviewPane p ]
@@ -108,8 +119,8 @@ I64 count_lines: [ @CONST C1 s | USIZE n | @C1 last ]
  | RET [ lines ]
  \_
 
-; the head of a text, and how many lines it has; a NUL in the head makes it
-; a binary
+; the head of a text, and how many lines it has; a head that does not look
+; like text makes it a binary
 ABYSS preview_read_text: [ @PreviewPane p | @CONST C1 path ]
  | Result<File | IoError> r = (File.open)[ path | FILE_READ ]
  | IF [ (r.is_err)[] ]
@@ -125,11 +136,9 @@ ABYSS preview_read_text: [ @PreviewPane p | @CONST C1 path ]
  |  | RET []
  |  \_
  | p.head_len = (got.unwrap)[]
- | FOR [ USIZE i = 0 | i < p.head_len | i += 1 ]
- |  | IF [ p.head{i} == '\0' ]
- |  |  | (preview_describe)[ p ]
- |  |  | RET []
- |  |  \_
+ | IF [ (looks_binary)[ p.head AS @CONST C1 | p.head_len ] ]
+ |  | (preview_describe)[ p ]
+ |  | RET []
  |  \_
  |
  | p.kind = PV_TEXT
@@ -154,6 +163,22 @@ ABYSS preview_read_text: [ @PreviewPane p | @CONST C1 path ]
 ; read again only when the cursor is on another file
 CONST USIZE PREVIEW_CMD_TEXT = 262144      ; what is kept of a previewer's text
 CONST USIZE PREVIEW_CMD_IMAGE = 33554432   ; and of its picture
+
+; what git says changed in the file `name` of the folder `dir`: its diff
+; against HEAD, or the staged and the unstaged one when there is no commit; a
+; file git does not know is shown whole, as new. The file is "$1"
+CONST @CONST C1 DIFF_SCRIPT = "git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo 'not in a git work tree'; exit 0; }\nf=$1\nif ! git ls-files --error-unmatch -- \"$f\" >/dev/null 2>&1; then\n  [ -d \"$f\" ] && exit 0\n  git check-ignore -q -- \"$f\" && exit 0\n  git --no-pager diff --no-index --color=always -- /dev/null \"$f\"\nelif git rev-parse -q --verify HEAD >/dev/null 2>&1; then\n  git --no-pager diff --color=always HEAD -- \"$f\"\nelse\n  git --no-pager diff --color=always --cached -- \"$f\"\n  git --no-pager diff --color=always -- \"$f\"\nfi"
+
+; the diff of `name` in `dir`, started. FALSE: it cannot be started
+B1 preview_by_diff: [ @PreviewPane p | @CONST C1 dir | @CONST C1 name ]
+ | p.job_image = FALSE
+ | IF [ !((job_start_in)[ @(p.job) | DIFF_SCRIPT | dir | name | PREVIEW_CMD_TEXT ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | (p.via.deinit)[]
+ | p.via = (String.of)[ "git diff" ]
+ | RET [ TRUE ]
+ \_
 
 ; the previewer the config gives the file at `path`, started. FALSE: none
 ; fits, or it cannot be started
@@ -180,15 +205,15 @@ B1 preview_by_rule: [ @PreviewPane p | @CONST C1 path ]
  | RET [ TRUE ]
  \_
 
-; where a previewer's picture is put to be read: $XDG_CACHE_HOME/pluf, or
-; ~/.cache/pluf, made if need be; `png` its kind
+; where a previewer's picture is put to be read: $XDG_CACHE_HOME/trufm, or
+; ~/.cache/trufm, made if need be; `png` its kind
 ABYSS preview_cache: [ @C1 out | B1 png ]
  | BufferSink b = (BufferSink.over)[ out | 4096 ]
  | Option<@CONST C1> cache = (env)[ "XDG_CACHE_HOME" ]
  | IF [ (cache.is_some)[] && (cache.unwrap)[]{0} == '/' ]
- |  | (b.print)[ "%s/pluf" | (cache.unwrap)[] ]
+ |  | (b.print)[ "%s/trufm" | (cache.unwrap)[] ]
  | ELSE
- |  | (b.print)[ "%s/.cache/pluf" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ |  | (b.print)[ "%s/.cache/trufm" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
  |  \_
  | (fs_make_dirs)[ out AS @CONST C1 ]
  | (b.print)[ "/preview.%s" | SELECT [ png | "png" | "ppm" ] ]
@@ -206,6 +231,13 @@ ABYSS preview_pump: [ @Ui ui | @PreviewPane p ]
  |  \_
  | @CONST C1 out = (p.job.out.cstr)[]
  | USIZE n = (p.job.out.size)[]
+ | IF [ n == 0 && p.diff ]
+ |  | (p.desc.deinit)[]
+ |  | p.desc = (String.of)[ "no changes" ]
+ |  | p.kind = PV_FILE
+ |  | (ui.redo)[]
+ |  | RET []
+ |  \_
  | IF [ n == 0 ]
  |  | (preview_describe)[ p ]
  |  | RET []
@@ -260,6 +292,12 @@ ABYSS preview_describe: [ @PreviewPane p ]
  | p.kind = PV_FILE
  \_
 
+; a pipe, a socket or a device (what a link points at): not to be opened
+B1 preview_special: [ @CONST C1 path ]
+ | Result<FileInfo | IoError> fi = (fs_info)[ path ]
+ | RET [ (fi.is_ok)[] && (fi.unwrap)[].kind == FS_OTHER ]
+ \_
+
 ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | I32 at = m.table.list.cursor
  | B1 some = at >= 0 && (at AS USIZE) < (m.files.size)[]
@@ -282,6 +320,7 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  |
  | p.entry = ?((m.files.at)[ at AS USIZE ])
  | p.entry.name = (String.of)[ (p.entry.name.cstr)[] ]
+ | p.entry.origin = (String.of)[ (p.entry.origin.cstr)[] ]
  | Result<FileInfo | IoError> fi = (fs_link_info)[ path AS @CONST C1 ]
  | IF [ (fi.is_ok)[] ]
  |  | ; the link's own: a broken one has no other
@@ -291,6 +330,11 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  |
  | IF [ p.entry.broken ]
  |  | p.kind = PV_BROKEN
+ | ELIF [ (preview_special)[ path AS @CONST C1 ] ]
+ |  | ; a pipe, a socket, a device: never opened, a read could wait for ever
+ |  | (preview_describe)[ p ]
+ | ELIF [ p.diff && (preview_by_diff)[ p | (m.cwd.cstr)[] | (p.entry.name.cstr)[] ] ]
+ |  | p.kind = PV_RUNNING
  | ELIF [ p.entry.dir ]
  |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | CFG.hidden | "" ] | PV_DIR | PV_UNREADABLE ]
  | ELIF [ (preview_by_rule)[ p | path AS @CONST C1 ] ]
@@ -603,7 +647,80 @@ ABYSS preview_label: [ @Ui ui | @CONST C1 label ]
  | (ui.put_cell)[ (fg)[ DIM ] | label | LABEL_W | TRUE ]
  \_
 
-ABYSS preview_meta: [ @Ui ui | @PreviewPane p ]
+; 04 Nov 2026 13:05:09
+ABYSS prop_date: [ @C1 out | USIZE cap | I64 secs ]
+ | DateTime d = (local_date)[ secs ]
+ | BufferSink b = (BufferSink.over)[ out | cap ]
+ | (b.print)[ "%02d %s %d %02d:%02d:%02d" | d.day AS I32 | MONTHS{(d.month AS I32) - 1} | d.year AS I32 | d.hour AS I32 | d.minute AS I32 | d.second AS I32 ]
+ \_
+
+CONST I32 PROP_LINES = 4        ; the most lines a value is given
+
+; the cells in `s`: a UTF-8 continuation byte is none
+I32 cells_of: [ @CONST C1 s ]
+ | I32 n = 0
+ | FOR [ USIZE i = 0 | s{i} != '\0' | i += 1 ]
+ |  | IF [ ((s{i} AS U8) & 0xC0) != 0x80 ]
+ |  |  | n += 1
+ |  |  \_
+ |  \_
+ | RET [ n ]
+ \_
+
+; a label and its value. A value longer than the column goes on under itself,
+; in the value's place, PROP_LINES lines at the most, the last cut with …
+ABYSS prop_line: [ @Ui ui | @CONST C1 label | @CONST C1 value | I32 width ]
+ | I32 room = SELECT [ width > LABEL_W | width - LABEL_W | 1 ]
+ | IF [ room > 120 ]
+ |  | room = 120
+ |  \_
+ | USIZE at = 0
+ | FOR [ I32 row = 0 | row < PROP_LINES && (value{at} != '\0' || row == 0) | row += 1 ]
+ |  | B1 cut = row == PROP_LINES - 1 && (cells_of)[ value + at ] > room
+ |  | I32 take = SELECT [ cut | room - 1 | room ]
+ |  | C1 piece{512}
+ |  | USIZE n = 0
+ |  | I32 cells = 0
+ |  | WHILE [ value{at} != '\0' ]
+ |  |  | B1 head = ((value{at} AS U8) & 0xC0) != 0x80
+ |  |  | IF [ head && cells >= take ]
+ |  |  |  | BREAK
+ |  |  |  \_
+ |  |  | IF [ head ]
+ |  |  |  | cells += 1
+ |  |  |  \_
+ |  |  | IF [ n + 1 < 512 ]
+ |  |  |  | piece{n} = value{at}
+ |  |  |  | n += 1
+ |  |  |  \_
+ |  |  | at += 1
+ |  |  \_
+ |  | piece{n} = '\0'
+ |  | (preview_label)[ ui | SELECT [ row == 0 | label | "" ] ]
+ |  | (ui.put)[ (fg)[ TEXT ] | piece AS @CONST C1 ]
+ |  | IF [ cut ]
+ |  |  | (ui.put)[ (fg)[ DIM ] | "…" ]
+ |  |  \_
+ |  \_
+ \_
+
+; a trashed file's origin and its date, above the facts
+ABYSS preview_trashed: [ @Ui ui | @PreviewPane p | I32 width ]
+ | IF [ (p.entry.origin.size)[] > 0 ]
+ |  | String short = (get_shorter_path)[ (p.entry.origin.cstr)[] ]
+ |  | (prop_line)[ ui | "from" | (short.cstr)[] | width ]
+ |  | (short.deinit)[]
+ |  \_
+ | IF [ p.entry.deleted > 0 ]
+ |  | C1 when{40}
+ |  | (prop_date)[ when | 40 | p.entry.deleted ]
+ |  | (preview_label)[ ui | "deleted" ]
+ |  | (ui.put)[ (fg)[ TEXT ] | when AS @CONST C1 ]
+ |  \_
+ \_
+
+ABYSS preview_meta: [ @Ui ui | @PreviewPane p | I32 width ]
+ | (preview_trashed)[ ui | p | width ]
  | DateTime d = (local_date)[ p.entry.modified ]
  | (preview_label)[ ui | "modified" ]
  | ((ui.pen)[ (fg)[ TEXT ] ].print)[ "%02d %s %d %02d:%02d" | d.day AS I32 | MONTHS{(d.month AS I32) - 1} | d.year AS I32 | d.hour AS I32 | d.minute AS I32 ]
@@ -612,6 +729,158 @@ ABYSS preview_meta: [ @Ui ui | @PreviewPane p ]
  | (mode_text)[ perm | p.mode | p.entry.dir | p.entry.broken ]
  | (preview_label)[ ui | "perm" ]
  | (ui.put)[ (fg)[ TEXT ] | perm AS @CONST C1 ]
+ \_
+
+; --- the properties sheet -------------------------------------------------------
+
+; 1 234 bytes · 1K
+ABYSS bytes_text: [ @C1 out | USIZE cap | U64 n ]
+ | C1 digits{32}
+ | (group_digits)[ digits | n AS I64 ]
+ | C1 human{16}
+ | (size_text)[ human | n ]
+ | BufferSink b = (BufferSink.over)[ out | cap ]
+ | (b.print)[ "%s bytes · %s" | digits AS @CONST C1 | human AS @CONST C1 ]
+ \_
+
+; the rows chosen with V: how many, how big, how many folders. Sizes are
+; the entries' own, nothing is walked
+ABYSS props_chosen: [ @Ui ui | @MainPane m | I32 lo | I32 hi | I32 width ]
+ | U64 total = 0
+ | I32 files = 0
+ | I32 dirs = 0
+ | FOR [ I32 i = lo | i <= hi | i += 1 ]
+ |  | @FileRecord e = (record_at)[ @(m.files) | i ]
+ |  | IF [ e != NULL ]
+ |  |  | IF [ e.dir ]
+ |  |  |  | dirs += 1
+ |  |  | ELSE
+ |  |  |  | files += 1
+ |  |  |  | total += e.size
+ |  |  |  \_
+ |  |  \_
+ |  \_
+ | C1 v{128}
+ | BufferSink b = (BufferSink.over)[ v | 128 ]
+ | (b.print)[ "%d" | hi - lo + 1 ]
+ | (prop_line)[ ui | "chosen" | v AS @CONST C1 | width ]
+ | BufferSink f = (BufferSink.over)[ v | 128 ]
+ | (f.print)[ "%d" | files ]
+ | (prop_line)[ ui | "files" | v AS @CONST C1 | width ]
+ | (bytes_text)[ v | 128 | total ]
+ | (prop_line)[ ui | "size" | v AS @CONST C1 | width ]
+ | BufferSink d = (BufferSink.over)[ v | 128 ]
+ | (d.print)[ "%d" | dirs ]
+ | (prop_line)[ ui | "folders" | v AS @CONST C1 | width ]
+ \_
+
+; the cursor's file: name, path, type, size, mode, owner, times, inode, links,
+; device and mount
+ABYSS props_file: [ @Ui ui | @PreviewPane p | I32 width ]
+ | Stat st
+ | IF [ !((px_stat_of)[ (p.path.cstr)[] | @st ]) ]
+ |  | (preview_note)[ ui | C_BROKEN | "cannot be read" ]
+ |  | RET []
+ |  \_
+ | U32 kind = st.mode & 0xF000
+ | B1 link = kind == 0xA000
+ | B1 dir = kind == 0x4000
+ | (prop_line)[ ui | "name" | (p.entry.name.cstr)[] | width ]
+ | (prop_line)[ ui | "path" | (p.path.cstr)[] | width ]
+ | (preview_trashed)[ ui | p | width ]
+ |
+ | C1 v{1100}
+ | @CONST C1 type = "file"
+ | IF [ dir ]
+ |  | type = "folder"
+ | ELIF [ kind == 0x1000 ]
+ |  | type = "fifo"
+ | ELIF [ kind == 0xC000 ]
+ |  | type = "socket"
+ | ELIF [ kind == 0x2000 ]
+ |  | type = "character device"
+ | ELIF [ kind == 0x6000 ]
+ |  | type = "block device"
+ |  \_
+ | IF [ link ]
+ |  | C1 target{1024}
+ |  | ISIZE n = (px_readlink)[ (p.path.cstr)[] | target | 1023 ]
+ |  | target{SELECT [ n > 0 | n AS USIZE | 0 ]} = '\0'
+ |  | BufferSink b = (BufferSink.over)[ v | 1100 ]
+ |  | (b.print)[ "link → %s%s" | target AS @CONST C1 | SELECT [ p.entry.broken | " (broken)" | "" ] ]
+ |  | (prop_line)[ ui | "type" | v AS @CONST C1 | width ]
+ | ELSE
+ |  | (prop_line)[ ui | "type" | type | width ]
+ |  \_
+ |
+ | IF [ dir ]
+ |  | BufferSink b = (BufferSink.over)[ v | 1100 ]
+ |  | IF [ p.entry.count >= 0 ]
+ |  |  | (b.print)[ "%d entries" | p.entry.count ]
+ |  | ELSE
+ |  |  | (b.print)[ "cannot be read" ]
+ |  |  \_
+ |  | (prop_line)[ ui | "size" | v AS @CONST C1 | width ]
+ | ELSE
+ |  | (bytes_text)[ v | 1100 | st.size ]
+ |  | (prop_line)[ ui | "size" | v AS @CONST C1 | width ]
+ |  \_
+ |
+ | C1 perm{12}
+ | (mode_text)[ perm | st.mode | dir | link ]
+ | perm{0} = SELECT [ kind == 0x1000 | 'p' | SELECT [ kind == 0xC000 | 's' | SELECT [ kind == 0x2000 | 'c' | SELECT [ kind == 0x6000 | 'b' | perm{0} ] ] ] ]
+ | BufferSink o = (BufferSink.over)[ v | 1100 ]
+ | ; the octal on a line of its own when both do not fit
+ | IF [ width - LABEL_W >= 15 ]
+ |  | (o.print)[ "%s  %03o" | perm AS @CONST C1 | st.mode & 0xFFF ]
+ |  | (prop_line)[ ui | "perm" | v AS @CONST C1 | width ]
+ | ELSE
+ |  | (prop_line)[ ui | "perm" | perm AS @CONST C1 | width ]
+ |  | (o.print)[ "%03o" | st.mode & 0xFFF ]
+ |  | (prop_line)[ ui | "octal" | v AS @CONST C1 | width ]
+ |  \_
+ |
+ | C1 who{128}
+ | (px_user_name)[ who | 128 | st.uid ]
+ | (prop_line)[ ui | "owner" | who AS @CONST C1 | width ]
+ | (px_group_name)[ who | 128 | st.gid ]
+ | (prop_line)[ ui | "group" | who AS @CONST C1 | width ]
+ |
+ | (prop_date)[ v | 1100 | st.mtime ]
+ | (prop_line)[ ui | "modified" | v AS @CONST C1 | width ]
+ | (prop_date)[ v | 1100 | st.atime ]
+ | (prop_line)[ ui | "accessed" | v AS @CONST C1 | width ]
+ | (prop_date)[ v | 1100 | st.ctime ]
+ | (prop_line)[ ui | "changed" | v AS @CONST C1 | width ]
+ |
+ | BufferSink n = (BufferSink.over)[ v | 1100 ]
+ | (n.print)[ "%llu" | st.ino ]
+ | (prop_line)[ ui | "inode" | v AS @CONST C1 | width ]
+ | BufferSink l = (BufferSink.over)[ v | 1100 ]
+ | (l.print)[ "%llu" | st.nlink ]
+ | (prop_line)[ ui | "links" | v AS @CONST C1 | width ]
+ | BufferSink d = (BufferSink.over)[ v | 1100 ]
+ | (d.print)[ "%u:%u" | st.dev_major | st.dev_minor ]
+ | (prop_line)[ ui | "device" | v AS @CONST C1 | width ]
+ |
+ | ; a link lives where its folder does, not where it points
+ | String where = SELECT [ link | (get_parent_path)[ (p.path.cstr)[] ] | (String.of)[ (p.path.cstr)[] ] ]
+ | IF [ !((mount_point_of)[ (where.cstr)[] | v | 1100 ]) ]
+ |  | (str_copy)[ v | 1100 | "?" ]
+ |  \_
+ | (prop_line)[ ui | "mount" | v AS @CONST C1 | width ]
+ | (where.deinit)[]
+ \_
+
+; the sheet in the preview's place: a summary while rows are chosen
+ABYSS preview_props: [ @Ui ui | @PreviewPane p | @MainPane m | I32 width ]
+ | I32 lo = 0
+ | I32 hi = 0
+ | IF [ (chosen_rows)[ m | @lo | @hi ] ]
+ |  | (props_chosen)[ ui | m | lo | hi | width ]
+ | ELIF [ p.kind != PV_NONE ]
+ |  | (props_file)[ ui | p | width ]
+ |  \_
  \_
 
 ; ↲ OPEN and o WITH, as Enter and o: a click says so in `want_open`,
@@ -665,7 +934,7 @@ ABYSS preview_pane: [ @Ui ui | @PreviewPane p | @MainPane m ]
  | ; the body's size is known from the last frame
  | Rect r = (ui.rect_of)[ id ]
  | I32 width = SELECT [ r.w > 1 | r.w | 1 ]
- | B1 shown = p.kind != PV_NONE
+ | B1 shown = p.kind != PV_NONE && !(p.props)
  |
  | (ui.box)[ "" | (pct)[ CFG.preview_width ] | GROW ]
  | IF [ shown ]
@@ -675,12 +944,16 @@ ABYSS preview_pane: [ @Ui ui | @PreviewPane p | @MainPane m ]
  |
  | @Node body = (ui.column)[ GROW | GROW ]
  | (body.with_id)[ id ]
- | (preview_body)[ ui | p | r | width ]
+ | IF [ p.props ]
+ |  | (preview_props)[ ui | p | m | width ]
+ | ELSE
+ |  | (preview_body)[ ui | p | r | width ]
+ |  \_
  | (ui.close)[]
  |
  | IF [ shown ]
  |  | (preview_rule)[ ui | width ]
- |  | (preview_meta)[ ui | p ]
+ |  | (preview_meta)[ ui | p | width ]
  |  | (ui.space)[ 1 | 1 ]
  |  | (preview_actions)[ ui | p ]
  |  \_

@@ -1,4 +1,4 @@
-; frame.pl -- one frame of pluf, top to bottom: the bars, the four columns,
+; frame.pl -- one frame of trufm, top to bottom: the bars, the four columns,
 ; the tasks, the keys. Built again for every event; what lasts is in App
 
 USE <std/core/core.pl>
@@ -39,6 +39,8 @@ ABYSS tick: [ @Ui ui | @App a ]
  | IF [ (a.note.size)[] > 0 && (now_ms)[] - a.note_at < NOTE_MS ]
  |  | (ui.wake_in)[ 500 ]
  |  \_
+ | ; a git a or A at work
+ | (git_action_step)[ ui | a ]
  |
  \_
 
@@ -93,7 +95,7 @@ B1 frame: [ @Ui ui | @App a ]
  | ; Q: out, and the shell to this folder -- through the file --cd-file names
  | IF [ (hit)[ ui | a | "Q" ] ]
  |  | IF [ (a.cd_file.size)[] == 0 ]
- |  |  | (app_note)[ a | "Q needs pluf's shell function: eval \"$(pluf --init zsh)\" in your rc" ]
+ |  |  | (app_note)[ a | "Q needs trufm's shell function: eval \"$(trufm --init zsh)\" in your rc" ]
  |  |  | RET [ TRUE ]
  |  |  \_
  |  | C1 line{4200}

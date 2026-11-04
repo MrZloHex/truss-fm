@@ -49,7 +49,50 @@ B1 job_start_in: [ @Job j | @CONST C1 script | @CONST C1 dir | @CONST C1 file | 
  | RET [ (job_spawn)[ j | (line.cstr)[] | dir | file | limit ] ]
  \_
 
-; sh -c `line` pluf `a1` [`a2`]: started, its stdout to read
+; the sh `script` run in `dir` as job_start_in does, with any number of
+; files: `lead` (if not NULL) is "$1", the strings of `files` follow it in
+; "$@". They are never put into the script. FALSE: it could not be started
+B1 job_start_many: [ @Job j | @CONST C1 script | @CONST C1 dir | @CONST C1 lead | @Vector<String> files | USIZE limit ]
+ | String line = (String.of)[ "cd \"$1\" || exit 1; shift; {\n" ]
+ | POSTLUDE (line.deinit)[]
+ | (line.append)[ script ]
+ | (line.append)[ "\n} 2>&1" ]
+ | (job_stop)[ j ]
+ | IF [ have_setsid == 0 ]
+ |  | have_setsid = SELECT [ (program_there)[ "setsid" ] | 1 | -1 ]
+ |  \_
+ | Vector<@CONST C1> argv
+ | POSTLUDE (argv.deinit)[]
+ | IF [ have_setsid > 0 ]
+ |  | (argv.push)[ "setsid" ]
+ |  \_
+ | (argv.push)[ "sh" ]
+ | (argv.push)[ "-c" ]
+ | (argv.push)[ (line.cstr)[] ]
+ | (argv.push)[ "trufm" ]
+ | (argv.push)[ dir ]
+ | IF [ lead != NULL ]
+ |  | (argv.push)[ lead ]
+ |  \_
+ | FOR [ USIZE i = 0 | i < (files.size)[] | i += 1 ]
+ |  | (argv.push)[ ((files.at)[ i ].cstr)[] ]
+ |  \_
+ | (argv.push)[ NULL ]
+ | Result<Process | IoError> r = (Process.spawn)[ argv.data AS @CONST @CONST C1 | PROCESS_NULL | PROCESS_PIPE | PROCESS_NULL ]
+ | IF [ (r.is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | j.p = (r.unwrap)[]
+ | j.live = TRUE
+ | j.done = FALSE
+ | j.ok = FALSE
+ | j.limit = limit
+ | (j.out.deinit)[]
+ | j.out = (String.of)[ "" ]
+ | RET [ TRUE ]
+ \_
+
+; sh -c `line` trufm `a1` [`a2`]: started, its stdout to read
 LOCAL B1 job_spawn: [ @Job j | @CONST C1 line | @CONST C1 a1 | @CONST C1 a2 | USIZE limit ]
  | (job_stop)[ j ]
  | ; under setsid it leads a group of its own, and all it starts -- sh's
@@ -57,8 +100,8 @@ LOCAL B1 job_spawn: [ @Job j | @CONST C1 line | @CONST C1 a1 | @CONST C1 a2 | US
  | IF [ have_setsid == 0 ]
  |  | have_setsid = SELECT [ (program_there)[ "setsid" ] | 1 | -1 ]
  |  \_
- | @CONST C1 alone{} = [ "setsid" | "sh" | "-c" | line | "pluf" | a1 | a2 | NULL ]
- | @CONST C1 plain{} = [ "sh" | "-c" | line | "pluf" | a1 | a2 | NULL ]
+ | @CONST C1 alone{} = [ "setsid" | "sh" | "-c" | line | "trufm" | a1 | a2 | NULL ]
+ | @CONST C1 plain{} = [ "sh" | "-c" | line | "trufm" | a1 | a2 | NULL ]
  | Result<Process | IoError> r = (Process.spawn)[ SELECT [ have_setsid > 0 | alone AS @CONST @CONST C1 | plain AS @CONST @CONST C1 ] | PROCESS_NULL | PROCESS_PIPE | PROCESS_NULL ]
  | IF [ (r.is_err)[] ]
  |  | RET [ FALSE ]
@@ -118,6 +161,19 @@ LOCAL ABYSS job_kill: [ @Job j ]
  |  | (px_kill)[ -((j.p.id)[]) | 9 ]
  |  \_
  | (j.p.kill)[ 9 ]
+ \_
+
+; stopped (SIGSTOP) or let go on (SIGCONT), with all it started
+ABYSS job_pause: [ @Job j | B1 stop ]
+ | IF [ !(j.live) ]
+ |  | RET []
+ |  \_
+ | I32 sig = SELECT [ stop | 19 | 18 ]
+ | IF [ have_setsid > 0 ]
+ |  | (px_kill)[ -((j.p.id)[]) | sig ]
+ | ELSE
+ |  | (px_kill)[ (j.p.id)[] | sig ]
+ |  \_
  \_
 
 ; killed if it runs, and what it printed let go

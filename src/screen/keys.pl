@@ -74,6 +74,17 @@ ABYSS keys_first: [ @Ui ui | @App a ]
  |  | (ui.redo)[]
  |  \_
  |
+ | ; give a task up: y does, anything else keeps it going
+ | IF [ a.prompt == PR_CANCEL && (ui.key)[] != 0 ]
+ |  | IF [ (ui.take)[ 'y' AS U32 ] ]
+ |  |  | (file_cancel_now)[ a ]
+ |  | ELSE
+ |  |  | (ui.consume)[]
+ |  |  | a.prompt = PR_NONE
+ |  |  \_
+ |  | (ui.redo)[]
+ |  \_
+ |
  | ; the delete question takes every key, before the columns can see one:
  | ; nothing moves under it. y deletes, anything else keeps
  | IF [ a.prompt == PR_DELETE && (ui.key)[] != 0 ]
@@ -157,12 +168,53 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  |  | (ui.set_focus)[ (ui.id)[ "help" ] ]
  | ELIF [ (hit)[ ui | a | "E" ] ]
  |  | (file_extract)[ a ]
+ | ELIF [ (hit)[ ui | a | "P" ] ]
+ |  | (file_pause)[ a ]
+ | ELIF [ (hit)[ ui | a | "K" ] ]
+ |  | (file_ask_cancel)[ a ]
+ | ELIF [ (hit)[ ui | a | "R" ] ]
+ |  | (file_retry)[ a ]
+ | ELIF [ (hit)[ ui | a | "dismiss" ] ]
+ |  | (file_dismiss)[ a ]
  | ELIF [ (hit)[ ui | a | "u" ] ]
- |  | (file_untrash)[ a ]
+ |  | IF [ a.listing.trash ]
+ |  |  | (file_restore)[ a ]
+ |  | ELSE
+ |  |  | (file_untrash)[ a ]
+ |  |  \_
+ | ELIF [ (hit)[ ui | a | "Z" ] ]
+ |  | (file_ask_empty)[ a ]
  | ELIF [ (hit)[ ui | a | "r" ] ]
  |  | (file_ask_rename)[ a ]
  | ELIF [ (hit)[ ui | a | "n" ] ]
  |  | (file_ask_mkdir)[ a ]
+ | ELIF [ (hit)[ ui | a | "c" ] ]
+ |  | (file_ask_chmod)[ a ]
+ | ELIF [ (hit)[ ui | a | "C" ] ]
+ |  | (file_ask_chown)[ a ]
+ | ELIF [ (hit)[ ui | a | "a" ] ]
+ |  | (file_git)[ a | TRUE ]
+ | ELIF [ (hit)[ ui | a | "A" ] ]
+ |  | (file_git)[ a | FALSE ]
+ | ELIF [ (hit)[ ui | a | "L" ] ]
+ |  | (file_paste_links)[ a ]
+ | ELIF [ (hit)[ ui | a | "i" ] ]
+ |  | a.preview.props = !(a.preview.props)
+ |  | ; the sheet and the diff share the place: one at a time
+ |  | IF [ a.preview.props && a.preview.diff ]
+ |  |  | a.preview.diff = FALSE
+ |  |  | (preview_redo)[ @(a.preview) ]
+ |  |  \_
+ | ELIF [ (hit)[ ui | a | "=" ] ]
+ |  | IF [ !(a.listing.git.on) ]
+ |  |  | (app_note)[ a | "not in a git work tree" ]
+ |  | ELSE
+ |  |  | a.preview.diff = !(a.preview.diff)
+ |  |  | a.preview.props = FALSE
+ |  |  | (preview_redo)[ @(a.preview) ]
+ |  |  \_
+ | ELIF [ (hit)[ ui | a | ":" ] ]
+ |  | (shell_ask)[ a ]
  | ELIF [ (hit)[ ui | a | "o" ] || a.preview.want_with ]
  |  | (open_ask)[ a ]
  | ELIF [ a.listing.want_open || a.preview.want_open || (hit)[ ui | a | "open" ] ]
@@ -184,11 +236,18 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  |  | (visual_off)[ @(a.listing) ]
  | ELIF [ (a.listing.filter.size)[] > 0 && (ui.take)[ KEY_ESC ] ]
  |  | (main_filter)[ @(a.listing) | "" ]
+ | ELIF [ a.preview.props && (ui.take)[ KEY_ESC ] ]
+ |  | a.preview.props = FALSE
+ | ELIF [ a.preview.diff && (ui.take)[ KEY_ESC ] ]
+ |  | a.preview.diff = FALSE
+ |  | (preview_redo)[ @(a.preview) ]
+ | ELIF [ (task_pick_held)[ @(a.tasks) | a.task_cur ] >= 0 && (ui.take)[ KEY_ESC ] ]
+ |  | (file_dismiss)[ a ]
  | ELSE
  |  | did = FALSE
  |  \_
  | IF [ did ]
- |  | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_OPEN ]
+ |  | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_OPEN || a.prompt == PR_SHELL || a.prompt == PR_CHMOD || a.prompt == PR_CHOWN ]
  |  |  | (ui.set_focus)[ (ui.id)[ "prompt" ] ]
  |  | ELIF [ a.prompt == PR_FILTER ]
  |  |  | (ui.set_focus)[ (ui.id)[ "filter" ] ]

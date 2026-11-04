@@ -23,7 +23,7 @@ USE <std/os/os.pl>
 ; what is kept of an archive's output at once: it is read a line at a time
 CONST USIZE EXTRACT_LIMIT = 0xFFFFFFFF
 
-; the archives pluf knows without a rule, by their last extension
+; the archives trufm knows without a rule, by their last extension
 CONST @CONST C1 ARCHIVE_EXTS = ",tar,tgz,tbz,tbz2,txz,tzst,tlz,gz,bz2,xz,zst,lzma,lz4,lz,z,zip,jar,war,apk,xpi,epub,7z,rar,iso,cpio,cab,deb,a,ar,"
 
 ; the default, run in the new folder with the archive as "$1": bsdtar for
@@ -41,7 +41,7 @@ LOCAL B1 has_text: [ @CONST C1 s | @CONST C1 sub ]
  | RET [ FALSE ]
  \_
 
-; is the file at `path` one pluf can unpack? An extract. rule fits it, or
+; is the file at `path` one trufm can unpack? An extract. rule fits it, or
 ; its extension is one ARCHIVE_EXTS has
 B1 is_archive: [ @CONST C1 path ]
  | IF [ (rule_for)[ @(CFG.extractors) | path ] != NULL ]
@@ -185,7 +185,7 @@ LOCAL ABYSS extract_flatten: [ @Task t ]
  |  \_
  | ; the folder aside first, so its own name is free for what it holds
  | String up = (get_dirname)[ (t.dest.cstr)[] ]
- | (up.append)[ ".pluf-part" ]
+ | (up.append)[ ".trufm-part" ]
  | String aside = (free_name)[ (t.into.cstr)[] | (up.cstr)[] ]
  | (up.deinit)[]
  | POSTLUDE (aside.deinit)[]

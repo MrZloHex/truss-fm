@@ -16,24 +16,24 @@ USE <modular.pl>
 CONST @CONST C1 HELP_L_KEYS{} = [
   "#" | "j k · ↓ ↑" | "h · ← · Backspace" | "l · → · Enter" | "gg · G" | "Ctrl-d · Ctrl-u" |
   "Ctrl-f · Ctrl-b" | "Tab · Shift-Tab" | "~" | "' then a key" | "" |
-  "#" | "/" | "s then n · s · d" | "s then r" | "." | "" |
+  "#" | "/" | "s then n · s · d" | "s then r" | "." | "M · + · ? · U" | "" |
   "#" | "1 – 9" | "Shift + 1 – 9" | "t · x" | "" |
   "#" | "Enter · l · click" | "D · Delete" | "b" ]
 CONST @CONST C1 HELP_L_WHAT{} = [
   "MOVING" | "down, up" | "up a folder" | "into a folder; open a file" | "top, bottom" | "half a page down, up" |
   "a page down, up -- PgDn PgUp Home End too" | "the next, the previous column" | "home" | "jump to a place: h e o d m p v / t, yours" | "" |
-  "FINDING AND VIEWING" | "filter: Enter keeps, Esc clears, ↑ ↓ move" | "sort by name, size, date -- again flips" | "reverse the order" | "show or hide hidden files" | "" |
+  "FINDING AND VIEWING" | "filter: Enter keeps, Esc clears, ↑ ↓ move" | "sort by name, size, date -- again flips" | "reverse the order" | "show or hide hidden files" | "after a name in a git work tree: changed, staged, new, in conflict -- a folder shows what is in it" | "" |
   "TABS" | "to that tab -- made, at home, if new" | "that tab here, where you are" | "new tab here · close this one" | "" |
   "THE PLACES COLUMN" | "go there" | "forget the bookmark" | "bookmark the folder you are in" ]
 
 CONST @CONST C1 HELP_R_KEYS{} = [
-  "#" | "V" | "y · d · p" | "D · Delete" | "u" | "X" | "r · n" | "E" | "o" | "Esc" | "" |
-  "#" | "click · double-click" | "Shift-click" | "right-click" | "wheel" | "middle-click a tab" | "click a part of the path" | "" |
+  "#" | "V" | "y · d · p" | "D · Delete" | "u" | "X" | "Z" | "r · n" | "c" | "C" | "-R" | "L" | "a · A" | "=" | "i" | "E" | "o" | ":" | "P" | "K" | "R" | "Esc" | "" |
+  "#" | "click · double-click" | "Shift-click" | "right-click" | "wheel" | "middle-click a tab" | "click a task" | "click a part of the path" | "" |
   "#" | "?" | "q · Ctrl-C" | "Q" ]
 CONST @CONST C1 HELP_R_WHAT{} = [
-  "FILES" | "choose the rows from here to the cursor" | "copy · cut · paste here" | "to the trash" | "put the last trashed back" | "delete for good, asked first" | "rename · new folder" | "unpack an archive into a folder" | "open with … -- 1 to 9 picks, e types" | "end choosing; clear the filter" | "" |
-  "THE MOUSE" | "the cursor there · open it" | "choose from the cursor to there" | "a row's actions" | "scroll" | "close it" | "go to that folder" | "" |
-  "THE REST" | "this help -- ?, Esc or q closes it" | "quit" | "quit, the shell to this folder (pluf --init)" ]
+  "FILES" | "choose the rows from here to the cursor" | "copy · cut · paste here" | "to the trash" | "put the last trashed back -- in the trash: the chosen, where they were" | "delete for good, asked first" | "in the trash: empty it, asked first" | "rename · new folder" | "change the mode of the chosen files -- 755 or u+x,go-w" | "change their owner -- user, user:group or :group" | "first in c or C's prompt: recursive, as a task (-R go-w, -R :users)" | "paste as symbolic links, not copies" | "git: stage · unstage the chosen files, in a work tree" | "git: the file's diff in the preview's place; again or Esc closes" | "properties of the file, or a summary of the chosen, in the preview's place -- Esc closes" | "unpack an archive into a folder" | "open with … -- 1 to 9 picks, e types" | "run a shell command here -- the chosen files are \"$@\"" | "pause, or go on with, the task in TASKS that is lit -- the oldest, or the one clicked" | "cancel it, asked first: a file half copied is removed, a half unpacked folder too" | "a task kept with ✗ failures: do only what failed again -- Esc dismisses it" | "end choosing; clear the filter" | "" |
+  "THE MOUSE" | "the cursor there · open it" | "choose from the cursor to there" | "a row's actions" | "scroll" | "close it" | "make it the task P and K act on" | "go to that folder" | "" |
+  "THE REST" | "this help -- ?, Esc or q closes it" | "quit" | "quit, the shell to this folder (trufm --init)" ]
 
 CONST I32 HELP_L = COUNT [ HELP_L_KEYS ]
 CONST I32 HELP_R = COUNT [ HELP_R_KEYS ]

@@ -1,7 +1,7 @@
-; config.pl -- ~/.config/pluf/config, read once as the program starts: a
+; config.pl -- ~/.config/trufm/config, read once as the program starts: a
 ; line each, `key = value`, # to the end of a line a comment. A key it does
 ; not know, or a value it cannot read, is said on stderr and left out; a
-; file that is not there leaves everything as it is. pluf.conf.example in
+; file that is not there leaves everything as it is. trufm.conf.example in
 ; the repository has every key
 ;
 ;   hidden = false
@@ -28,7 +28,7 @@ TYPE Opener: STRUCT
  | String exts              ; ,pdf,djvu, -- lower case, a comma each side; ,*, any;
  |                          ;   one with a / in it a MIME type: ,image/*,
  | String cmd               ; a shell command; %f where the files go, or after it
- | B1 term                  ; open: term: it wants the terminal, pluf steps aside;
+ | B1 term                  ; open: term: it wants the terminal, trufm steps aside;
  |                          ;   preview: image: what it prints is a picture
  \_
 
@@ -52,6 +52,7 @@ TYPE Config: STRUCT
  | Vector<String> tabs      ; opened at the start, after the one asked for
  | B1 std_places            ; Desktop, Documents, Downloads ... and / among the places
  | B1 devices               ; the DEVICES of the places column
+ | B1 git                   ; marks in the main column for a folder in a git work tree
  | Vector<String> places    ; place = lines, as they were: key, path, | name
  | Vector<Opener> openers   ; open.<exts> = lines, in order: the first that fits
  | Vector<Opener> previewers ; preview.<exts> = lines, the same way
@@ -61,7 +62,7 @@ TYPE Config: STRUCT
 
 Config CFG = [ .hidden = TRUE | .root_hidden = FALSE | .places_width = 15 | .root_width = 25 |
                .preview_width = 20 | .sort = 0 | .sort_desc = FALSE | .confirm_delete = TRUE |
-               .std_places = TRUE | .devices = TRUE ]
+               .std_places = TRUE | .devices = TRUE | .git = TRUE ]
 
 ; --- values ---------------------------------------------------------------------
 
@@ -185,6 +186,9 @@ LOCAL B1 config_set: [ @CONST C1 k | @CONST C1 v ]
  | IF [ (str_eq)[ k | "hidden" ] ]
  |  | RET [ (read_bool)[ v | @(CFG.hidden) ] ]
  |  \_
+ | IF [ (str_eq)[ k | "git" ] ]
+ |  | RET [ (read_bool)[ v | @(CFG.git) ] ]
+ |  \_
  | IF [ (str_eq)[ k | "root_hidden" ] ]
  |  | RET [ (read_bool)[ v | @(CFG.root_hidden) ] ]
  |  \_
@@ -257,14 +261,14 @@ LOCAL B1 config_set: [ @CONST C1 k | @CONST C1 v ]
  | RET [ FALSE ]
  \_
 
-; the config file's path, in `out`: $PLUF_CONFIG, or ~/.config/pluf/config
+; the config file's path, in `out`: $TRUFM_CONFIG, or ~/.config/trufm/config
 ABYSS config_path: [ @C1 out | USIZE cap ]
- | Option<@CONST C1> given = (env)[ "PLUF_CONFIG" ]
+ | Option<@CONST C1> given = (env)[ "TRUFM_CONFIG" ]
  | BufferSink b = (BufferSink.over)[ out | cap ]
  | IF [ (given.is_some)[] ]
  |  | (b.print)[ "%s" | (given.unwrap)[] ]
  | ELSE
- |  | (b.print)[ "%s/.config/pluf/config" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
+ |  | (b.print)[ "%s/.config/trufm/config" | ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
  |  \_
  \_
 
@@ -302,7 +306,7 @@ ABYSS config_load: []
  |  |  |  | ok = (config_set)[ (trim)[ line ] AS @CONST C1 | (trim)[ eq + 1 ] AS @CONST C1 ]
  |  |  |  \_
  |  |  | IF [ !ok ]
- |  |  |  | (stderr.print)[ "pluf: %s:%d: not understood, left out\n" | file AS @CONST C1 | no ]
+ |  |  |  | (stderr.print)[ "trufm: %s:%d: not understood, left out\n" | file AS @CONST C1 | no ]
  |  |  |  \_
  |  |  \_
  |  \_

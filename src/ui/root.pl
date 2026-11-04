@@ -1,8 +1,8 @@
 ; root.pl -- the parent column: the folder around the current one, and in it
 ; the current one in amber. Hidden entries are left out, unless the current
-; folder is one. A folder opened here (l, →, Enter) is the current one next,
-; and the main column has the keys: on the amber row that is only the
-; second. Going up is a step up
+; folder is one. l and → on a folder go into it: the current one becomes the
+; first folder in it, and this column keeps the keys. Enter and a double-click
+; open the folder itself and the main column has the keys. Going up is a step up
 
 USE <std/core/core.pl>
 USE <std/alloc/string.pl>
@@ -56,6 +56,35 @@ ABYSS update_root: [ @RootPane p | @CONST C1 cwd ]
  | p.list.cursor = SELECT [ p.here >= 0 | p.here | 0 ]
  \_
 
+; the folder `e` of `dir` opened, if it can be read: it is the one asked for
+; and the main column takes the focus
+ABYSS root_open: [ @Ui ui | @String go | @CONST C1 dir | @CONST FileRecord e ]
+ | IF [ e != NULL && e.dir && !(e.broken) && e.count >= 0 ]
+ |  | (ask_go)[ go | GO_IN | "" | dir | e ]
+ |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  | (ui.redo)[]
+ |  \_
+ \_
+
+; into the folder `e` of `dir`, as the parent column of ranger does: the
+; current folder becomes the first folder in it, so this column lists `e` and
+; keeps the focus. With no folder to enter in it, `e` itself is the one asked
+; for and the main column takes the focus. Only `e` is read, and only now
+ABYSS root_into: [ @Ui ui | @String go | @CONST C1 dir | @CONST FileRecord e ]
+ | IF [ e == NULL || !(e.dir) || e.broken || e.count < 0 ]
+ |  | RET []
+ |  \_
+ | C1 path{4096}
+ | BufferSink b = (BufferSink.over)[ path | 4096 ]
+ | (b.print)[ SELECT [ (str_eq)[ dir | "/" ] | "%s%s" | "%s/%s" ] | dir | (e.name.cstr)[] ]
+ | IF [ !((first_subfolder)[ go | path AS @CONST C1 | CFG.hidden && CFG.root_hidden ]) ]
+ |  | (go.deinit)[]
+ |  | ?go = (String.of)[ path AS @CONST C1 ]
+ |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  \_
+ | (ui.redo)[]
+ \_
+
 ; `go`: the folder it asks to go to, if one was opened or left
 ABYSS root_pane: [ @Ui ui | @RootPane p | @CONST C1 cwd | @String go ]
  | (update_root)[ p | cwd ]
@@ -64,22 +93,24 @@ ABYSS root_pane: [ @Ui ui | @RootPane p | @CONST C1 cwd | @String go ]
  |
  | IF [ (ui.focused)[ id ] ]
  |  | (move_keys)[ ui | @(p.list) ]
- |  | I32 how = (go_keys)[ ui ]
  |  | @CONST FileRecord e = (record_at)[ @(p.files) | p.list.cursor ]
- |  | (ask_go)[ go | how | cwd | (p.dir.cstr)[] | e ]
- |  | ; into a folder, as the parent column of ranger: that folder opened,
- |  | ; and the main column takes the keys -- on the current one's row only
- |  | ; the second, it is open already
- |  | IF [ how == GO_IN && e != NULL && e.dir && !(e.broken) && e.count >= 0 ]
- |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
- |  |  | (ui.redo)[]
+ |  | ; Enter opens the folder; l and → are a step down here, not in the main column
+ |  | IF [ (ui.take)[ KEY_ENTER ] ]
+ |  |  | (root_open)[ ui | go | (p.dir.cstr)[] | e ]
+ |  | ELSE
+ |  |  | I32 how = (go_keys)[ ui ]
+ |  |  | IF [ how == GO_IN ]
+ |  |  |  | (root_into)[ ui | go | (p.dir.cstr)[] | e ]
+ |  |  | ELSE
+ |  |  |  | (ask_go)[ go | how | cwd | (p.dir.cstr)[] | e ]
+ |  |  |  \_
  |  |  \_
  |  \_
  |
  | ; the list's width is known from the last frame
  | I32 width = (name_width)[ (ui.rect_of)[ id ].w ]
  |
- | (ui.box)[ (p.title.cstr)[] | (pct)[ CFG.root_width ] | GROW ]
+ | ((ui.box)[ (p.title.cstr)[] | (pct)[ CFG.root_width ] | GROW ].pads)[ ui.theme.box_pad | 0 | 0 | 0 ]
  | (ui.list)[ @(p.list) | id | n | GROW | GROW ]
  | FOR [ I32 i = 0 | i < n | i += 1 ]
  |  | (ui.list_row)[ @(p.list) | i | id ]
@@ -88,13 +119,9 @@ ABYSS root_pane: [ @Ui ui | @RootPane p | @CONST C1 cwd | @String go ]
  | (ui.end)[]
  | (ui.close)[]
  |
- | ; a double press on a folder: as l -- opened, the main column focused
+ | ; a double press on a folder: as Enter
  | IF [ (press_row)[ ui | id | @(p.list) | BTN_LEFT | 2 ] == p.list.cursor ]
  |  | @CONST FileRecord e = (record_at)[ @(p.files) | p.list.cursor ]
- |  | IF [ e != NULL && e.dir && !(e.broken) && e.count >= 0 ]
- |  |  | (ask_go)[ go | GO_IN | cwd | (p.dir.cstr)[] | e ]
- |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
- |  |  | (ui.redo)[]
- |  |  \_
+ |  | (root_open)[ ui | go | (p.dir.cstr)[] | e ]
  |  \_
  \_

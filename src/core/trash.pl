@@ -191,3 +191,241 @@ B1 trash_restore: [ @CONST C1 put | @CONST C1 path | @String why ]
  | (name.deinit)[]
  | RET [ TRUE ]
  \_
+
+; --- the trash as a folder to look at -------------------------------------------
+
+; is `dir` the files/ of a trash: the home one, a .Trash-<uid> at the top of
+; a disk, or <top>/.Trash/<uid>?
+B1 trash_files_dir: [ @CONST C1 dir ]
+ | IF [ !((str_ends)[ dir | "/files" ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | String up = (get_parent_path)[ dir ]
+ | String base = (get_dirname)[ (up.cstr)[] ]
+ | String above = (get_parent_path)[ (up.cstr)[] ]
+ | String above_name = (get_dirname)[ (above.cstr)[] ]
+ | C1 home{TRASH_PATH}
+ | (trash_home)[ home | TRASH_PATH ]
+ | B1 yes = (up.equals)[ home AS @CONST C1 ] || (str_starts)[ (base.cstr)[] | ".Trash-" ] || (above_name.equals)[ ".Trash" ]
+ | ; home reached through a link: the same layout, with its info/ beside
+ | IF [ !yes && (base.equals)[ "Trash" ] ]
+ |  | String info = (join_path)[ (up.cstr)[] | "info" ]
+ |  | Result<FileInfo | IoError> fi = (fs_info)[ (info.cstr)[] ]
+ |  | yes = (fi.is_ok)[] && (fi.unwrap)[].kind == FS_DIR && (above_name.equals)[ "share" ]
+ |  | (info.deinit)[]
+ |  \_
+ | (up.deinit)[]
+ | (base.deinit)[]
+ | (above.deinit)[]
+ | (above_name.deinit)[]
+ | RET [ yes ]
+ \_
+
+; the info file of `item`, a trash's files/<name>, in `out`. FALSE: `item`
+; is not directly in a trash's files/
+B1 trash_info_of: [ @CONST C1 item | @C1 out | USIZE cap ]
+ | String bin = (get_parent_path)[ item ]
+ | String top = (get_parent_path)[ (bin.cstr)[] ]
+ | String name = (get_dirname)[ item ]
+ | B1 yes = (trash_files_dir)[ (bin.cstr)[] ]
+ | IF [ yes ]
+ |  | BufferSink b = (BufferSink.over)[ out | cap ]
+ |  | (b.print)[ "%s/info/%s.trashinfo" | (top.cstr)[] | (name.cstr)[] ]
+ |  \_
+ | (bin.deinit)[]
+ | (top.deinit)[]
+ | (name.deinit)[]
+ | RET [ yes ]
+ \_
+
+LOCAL I32 hex_val: [ C1 c ]
+ | IF [ c >= '0' && c <= '9' ]
+ |  | RET [ (c - '0') AS I32 ]
+ |  \_
+ | IF [ c >= 'a' && c <= 'f' ]
+ |  | RET [ (c - 'a') AS I32 + 10 ]
+ |  \_
+ | IF [ c >= 'A' && c <= 'F' ]
+ |  | RET [ (c - 'A') AS I32 + 10 ]
+ |  \_
+ | RET [ -1 ]
+ \_
+
+; `s` with its %XX undone, into `out`. FALSE: a % not followed by two hex
+; digits, a %00, or not enough room. Nothing else is touched: a ? or # stays
+B1 url_decode: [ @C1 out | USIZE cap | @CONST C1 s ]
+ | USIZE o = 0
+ | FOR [ USIZE i = 0 | s{i} != '\0' | i += 1 ]
+ |  | C1 c = s{i}
+ |  | IF [ c == '%' ]
+ |  |  | I32 hi = (hex_val)[ s{i + 1} ]
+ |  |  | IF [ hi < 0 ]
+ |  |  |  | RET [ FALSE ]
+ |  |  |  \_
+ |  |  | I32 lo = (hex_val)[ s{i + 2} ]
+ |  |  | IF [ lo < 0 || (hi == 0 && lo == 0) ]
+ |  |  |  | RET [ FALSE ]
+ |  |  |  \_
+ |  |  | c = (hi * 16 + lo) AS C1
+ |  |  | i += 2
+ |  |  \_
+ |  | IF [ o + 1 >= cap ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | out{o} = c
+ |  | o += 1
+ |  \_
+ | out{o} = '\0'
+ | RET [ TRUE ]
+ \_
+
+; n digits of `s` from `at` as a number; -1: one is not a digit
+LOCAL I32 digits_at: [ @CONST C1 s | USIZE at | USIZE n ]
+ | I32 v = 0
+ | FOR [ USIZE i = 0 | i < n | i += 1 ]
+ |  | IF [ s{at + i} < '0' || s{at + i} > '9' ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | v = v * 10 + (s{at + i} - '0') AS I32
+ |  \_
+ | RET [ v ]
+ \_
+
+; 2026-11-04T10:12:03, local time, as seconds since 1970; -1: it is not that
+I64 trash_date: [ @CONST C1 s ]
+ | IF [ (str_len)[ s ] < 19 || s{4} != '-' || s{7} != '-' || (s{10} != 'T' && s{10} != ' ') || s{13} != ':' || s{16} != ':' ]
+ |  | RET [ -1 ]
+ |  \_
+ | I32 y = (digits_at)[ s | 0 | 4 ]
+ | I32 mo = (digits_at)[ s | 5 | 2 ]
+ | I32 d = (digits_at)[ s | 8 | 2 ]
+ | I32 h = (digits_at)[ s | 11 | 2 ]
+ | I32 mi = (digits_at)[ s | 14 | 2 ]
+ | I32 se = (digits_at)[ s | 17 | 2 ]
+ | IF [ y < 1970 || mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23 || mi < 0 || mi > 59 || se < 0 || se > 60 ]
+ |  | RET [ -1 ]
+ |  \_
+ | Tm t
+ | t.sec = se
+ | t.min = mi
+ | t.hour = h
+ | t.mday = d
+ | t.mon = mo - 1
+ | t.year = y - 1900
+ | t.wday = 0
+ | t.yday = 0
+ | t.isdst = -1
+ | t.gmtoff = 0
+ | t.zone = ""
+ | RET [ (px_mktime)[ @t ] ]
+ \_
+
+; a .trashinfo's `text`: the Path, decoded, into `path` (TRASH_PATH); the
+; DeletionDate into `when` (-1: none). FALSE: there is no usable Path
+B1 trashinfo_parse: [ @CONST C1 text | @C1 path | @I64 when ]
+ | ?when = -1
+ | path{0} = '\0'
+ | B1 got = FALSE
+ | USIZE i = 0
+ | WHILE [ text{i} != '\0' ]
+ |  | USIZE e = i
+ |  | WHILE [ text{e} != '\0' && text{e} != '\n' ]
+ |  |  | e += 1
+ |  |  \_
+ |  | ; the line, without a \r at its end
+ |  | USIZE n = e - i
+ |  | IF [ n > 0 && text{i + n - 1} == '\r' ]
+ |  |  | n -= 1
+ |  |  \_
+ |  | IF [ n < 12000 ]
+ |  |  | C1 line{12000}
+ |  |  | FOR [ USIZE k = 0 | k < n | k += 1 ]
+ |  |  |  | line{k} = text{i + k}
+ |  |  |  \_
+ |  |  | line{n} = '\0'
+ |  |  | IF [ (str_starts)[ line AS @CONST C1 | "Path=" ] && !got ]
+ |  |  |  | got = (url_decode)[ path | TRASH_PATH | (line AS @CONST C1) + 5 ]
+ |  |  | ELIF [ (str_starts)[ line AS @CONST C1 | "DeletionDate=" ] ]
+ |  |  |  | ?when = (trash_date)[ (line AS @CONST C1) + 13 ]
+ |  |  |  \_
+ |  |  \_
+ |  | i = SELECT [ text{e} == '\0' | e | e + 1 ]
+ |  \_
+ | IF [ !got || path{0} == '\0' ]
+ |  | path{0} = '\0'
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ TRUE ]
+ \_
+
+; what the trash knows of `item`, a files/<name>: where it was, in full,
+; into `path` (TRASH_PATH), and when it went, into `when` (-1: not known).
+; FALSE: no readable info file with a Path. A relative Path is of the
+; disk's top, as the spec has it
+B1 trash_origin: [ @CONST C1 item | @C1 path | @I64 when ]
+ | ?when = -1
+ | path{0} = '\0'
+ | C1 info{TRASH_PATH}
+ | IF [ !((trash_info_of)[ item | info | TRASH_PATH ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | I32 fd = (px_open)[ info AS @CONST C1 | O_READ ]
+ | IF [ fd < 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | C1 text{16384}
+ | ISIZE n = (px_read)[ fd | text AS @ABYSS | 16383 ]
+ | (px_close)[ fd ]
+ | IF [ n <= 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | text{n AS USIZE} = '\0'
+ | IF [ !((trashinfo_parse)[ text AS @CONST C1 | path | when ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ path{0} == '/' ]
+ |  | RET [ TRUE ]
+ |  \_
+ | ; relative: of the top of the disk the trash is on
+ | String bin = (get_parent_path)[ item ]
+ | String trash = (get_parent_path)[ (bin.cstr)[] ]
+ | String top = (get_parent_path)[ (trash.cstr)[] ]
+ | String kind = (get_dirname)[ (top.cstr)[] ]
+ | IF [ (kind.equals)[ ".Trash" ] ]
+ |  | String again = (get_parent_path)[ (top.cstr)[] ]
+ |  | (top.deinit)[]
+ |  | top = again
+ |  \_
+ | String full = (join_path)[ (top.cstr)[] | path AS @CONST C1 ]
+ | B1 ok = (str_len)[ (full.cstr)[] ] < TRASH_PATH
+ | IF [ ok ]
+ |  | (str_copy)[ path | TRASH_PATH | (full.cstr)[] ]
+ | ELSE
+ |  | path{0} = '\0'
+ |  \_
+ | (full.deinit)[]
+ | (kind.deinit)[]
+ | (top.deinit)[]
+ | (trash.deinit)[]
+ | (bin.deinit)[]
+ | RET [ ok ]
+ \_
+
+; `item`, a trash's files/<name>, back to `orig`; where it went to, if
+; that is taken, a free name beside it, is in `landed`. FALSE, and why in `why`
+B1 trash_put_back: [ @CONST C1 item | @CONST C1 orig | @String landed | @String why ]
+ | String dst = (String.of)[ orig ]
+ | IF [ (taken)[ orig ] ]
+ |  | String up = (get_parent_path)[ orig ]
+ |  | String name = (get_dirname)[ orig ]
+ |  | (dst.deinit)[]
+ |  | dst = (free_name)[ (up.cstr)[] | (name.cstr)[] ]
+ |  | (up.deinit)[]
+ |  | (name.deinit)[]
+ |  \_
+ | (landed.deinit)[]
+ | ?landed = (String.of)[ (dst.cstr)[] ]
+ | B1 ok = (trash_restore)[ item | (dst.cstr)[] | why ]
+ | (dst.deinit)[]
+ | RET [ ok ]
+ \_

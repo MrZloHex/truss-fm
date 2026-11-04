@@ -14,6 +14,7 @@ USE <modular.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
 !USES <../core/sys.pl>
+!USES <../core/git.pl>
 
 ; the columns, in the order the header has them
 CONST I32 COL_NAME = 0
@@ -25,6 +26,7 @@ CONST I32 MAIN_SIZE = 5
 CONST I32 MAIN_DATE = 6
 CONST I32 MAIN_EDGES = 4    ; a cell before each column and after the last
 CONST I32 MAIN_NAME = 8     ; the least a name gets; it takes what is left
+CONST I32 GIT_W = 2         ; a space and git's mark, after the name
 
 TYPE MainPane: STRUCT
  | TableState table
@@ -52,6 +54,9 @@ TYPE MainPane: STRUCT
  | B1 want_menu             ; a right press on a row: its actions are offered
  | String anchor_name       ; the file `anchor` is on: a row moves as the folder
  |                          ;   is read again or sorted, the file does not
+ | GitInfo git              ; the folder's changes, as git has them
+ | B1 trash                 ; the folder is a trash's files/: rows show where
+ |                          ;   each was and when it went
  \_
 
 ABYSS dispose_main: [ @MainPane p ]
@@ -61,6 +66,7 @@ ABYSS dispose_main: [ @MainPane p ]
  | (p.files.deinit)[]
  | (p.filter.deinit)[]
  | (p.anchor_name.deinit)[]
+ | (git_free)[ @(p.git) ]
  \_
 
 ; --- the visual selection --------------------------------------------------------
@@ -215,6 +221,10 @@ ABYSS main_cursor_name: [ @MainPane p | @C1 out ]
 ABYSS main_read: [ @MainPane p | @CONST C1 cwd ]
  | (p.files.clear)[]
  | (read_folder)[ @(p.all) | cwd | CFG.hidden | "" ]
+ | p.trash = (trash_files_dir)[ cwd ]
+ | IF [ p.trash ]
+ |  | (records_trash)[ @(p.all) | cwd ]
+ |  \_
  | (main_seen)[ p ]
  | (main_sort)[ p ]
  \_
@@ -295,6 +305,21 @@ B1 main_changed: [ @MainPane p ]
  | RET [ i.modified != p.seen_sec || i.modified_ns != p.seen_nsec ]
  \_
 
+; the cursor's row in the whole folder (`all`), not in the filtered view;
+; the cursor's row itself when no filter is in the way
+I32 main_unfiltered_row: [ @MainPane p ]
+ | I32 c = p.table.list.cursor
+ | IF [ c < 0 || c >= (p.files.size)[] AS I32 ]
+ |  | RET [ c ]
+ |  \_
+ | FOR [ USIZE i = 0 | i < (p.all.size)[] | i += 1 ]
+ |  | IF [ (str_eq)[ ((p.all.at)[i].name.cstr)[] | ((p.files.at)[ c AS USIZE ].name.cstr)[] ] ]
+ |  |  | RET [ i AS I32 ]
+ |  |  \_
+ |  \_
+ | RET [ c ]
+ \_
+
 ; the row of the file named `name`; `none` when there is no such file
 I32 main_find: [ @MainPane p | @CONST C1 name | I32 none ]
  | FOR [ USIZE i = 0 | i < (p.files.size)[] | i += 1 ]
@@ -329,6 +354,7 @@ ABYSS update_main: [ @MainPane p | @CONST C1 cwd ]
  |  | p.filter = (String.of)[ "" ]
  |  |
  |  | (main_read)[ p | cwd ]
+ |  | (git_ask)[ @(p.git) | cwd | FALSE ]
  |  | p.table.list.cursor = SELECT [ went_up | (main_find)[ p | (from.cstr)[] | 0 ] | 0 ]
  |  \_
  | IF [ p.stale ]
@@ -338,6 +364,7 @@ ABYSS update_main: [ @MainPane p | @CONST C1 cwd ]
  |  | String name = (get_dirname)[ (keep.cstr)[] ]
  |  | POSTLUDE (name.deinit)[]
  |  | (main_read)[ p | cwd ]
+ |  | (git_ask)[ @(p.git) | cwd | TRUE ]
  |  | I32 n = (p.files.size)[] AS I32
  |  | I32 was = SELECT [ p.table.list.cursor < n | p.table.list.cursor | n - 1 ]
  |  | p.table.list.cursor = (main_find)[ p | (name.cstr)[] | SELECT [ was < 0 | 0 | was ] ]
@@ -349,7 +376,12 @@ ABYSS update_main: [ @MainPane p | @CONST C1 cwd ]
  |  \_
  | ; a tab come back to: its row. Last, so it holds when two tabs share a folder
  | IF [ p.restore > 0 ]
- |  | p.table.list.cursor = p.restore - 1
+ |  | ; the row it had, or the last, if the folder is shorter now
+ |  | I32 last = ((p.files.size)[] AS I32) - 1
+ |  | p.table.list.cursor = SELECT [ p.restore - 1 > last | SELECT [ last < 0 | 0 | last ] | p.restore - 1 ]
+ |  | ; the count too: on the first frame the list has not set it yet, and
+ |  | ; j k would keep the cursor in a list of none
+ |  | p.table.list.count = last + 1
  |  | p.restore = 0
  |  \_
  \_
@@ -407,6 +439,37 @@ ABYSS name_lit: [ @Ui ui | @CONST C1 s | U64 hits | Color c | I32 width ]
  |  \_
  \_
 
+; a space, and git's mark: M changed, + staged, ? new, U in conflict; a folder
+; has the worst of what is in it. A blank for a clean one
+ABYSS git_cell: [ @Ui ui | C1 mark ]
+ | (ui.spaces)[ 1 ]
+ | IF [ mark == '\0' ]
+ |  | (ui.spaces)[ 1 ]
+ |  | RET []
+ |  \_
+ | C1 one{2}
+ | one{0} = mark
+ | one{1} = '\0'
+ | Color c = SELECT [ mark == 'U' | C_BROKEN | SELECT [ mark == 'M' | C_MARK | SELECT [ mark == '+' | C_EXEC | C_HIDDEN ] ] ]
+ | (ui.put)[ (fg)[ c ] | one AS @CONST C1 ]
+ \_
+
+; ` ← ~/work/notes`: the folder the trashed file was in, home as ~, cut to
+; `room` cells (and left out if it would be less than a few)
+ABYSS origin_tail: [ @Ui ui | @CONST FileRecord e | I32 room ]
+ | C1 line{4200}
+ | line{0} = '\0'
+ | IF [ room >= 6 ]
+ |  | String up = (get_parent_path)[ (e.origin.cstr)[] ]
+ |  | String short = (get_shorter_path)[ (up.cstr)[] ]
+ |  | BufferSink b = (BufferSink.over)[ line | 4200 ]
+ |  | (b.print)[ " ← %s" | (short.cstr)[] ]
+ |  | (short.deinit)[]
+ |  | (up.deinit)[]
+ |  \_
+ | (ui.put_cell)[ (fg)[ DIM ] | line AS @CONST C1 | room | TRUE ]
+ \_
+
 ABYSS main_row: [ @Ui ui | @MainPane p | I32 i | U32 id ]
  | @FileRecord e = (p.files.at)[ i AS USIZE ]
  | @Node row = (ui.table_row)[ @(p.table) | i | id ]
@@ -423,12 +486,24 @@ ABYSS main_row: [ @Ui ui | @MainPane p | I32 i | U32 id ]
  | (b.print)[ SELECT [ e.broken | "%s → missing" | SELECT [ e.dir | "%s/" | "%s" ] ] | (e.name.cstr)[] ]
  | (draw_icon)[ ui | e ]
  | Color c = (record_color)[ e | picked || here ]
- | I32 width = p.table.sized{COL_NAME} - ICON_W
+ | ; in a work tree the name leaves two cells for git's mark
+ | I32 width = p.table.sized{COL_NAME} - ICON_W - SELECT [ p.git.on | GIT_W | 0 ]
+ | ; in the trash the name keeps what it needs, and where it was fills the rest
+ | I32 own = width
+ | IF [ (e.origin.size)[] > 0 && (name_cells)[ name AS @CONST C1 ] < width ]
+ |  | own = (name_cells)[ name AS @CONST C1 ]
+ |  \_
  | U64 hits = 0
- | IF [ (p.filter.size)[] > 0 && (fuzzy_hit)[ (e.name.cstr)[] | (p.filter.cstr)[] | @hits ] && (name_cells)[ name AS @CONST C1 ] <= width ]
- |  | (name_lit)[ ui | name AS @CONST C1 | hits | c | width ]
+ | IF [ (p.filter.size)[] > 0 && (fuzzy_hit)[ (e.name.cstr)[] | (p.filter.cstr)[] | @hits ] && (name_cells)[ name AS @CONST C1 ] <= own ]
+ |  | (name_lit)[ ui | name AS @CONST C1 | hits | c | own ]
  | ELSE
- |  | (ui.put_cell)[ (fg)[ c ] | name AS @CONST C1 | width | TRUE ]
+ |  | (ui.put_cell)[ (fg)[ c ] | name AS @CONST C1 | own | TRUE ]
+ |  \_
+ | IF [ own < width ]
+ |  | (origin_tail)[ ui | e | width - own ]
+ |  \_
+ | IF [ p.git.on ]
+ |  | (git_cell)[ ui | (git_mark_of)[ @(p.git) | (e.name.cstr)[] ] ]
  |  \_
  | (ui.pen)[ (fg)[ TEXT ] ]
  | (ui.spaces)[ 1 ]
@@ -453,6 +528,11 @@ ABYSS main_pane: [ @Ui ui | @MainPane p | @CONST C1 cwd | @String go ]
  | (update_main)[ p | cwd ]
  | U32 id = (ui.id)[ "main" ]
  | I32 n = (p.files.size)[] AS I32
+ | ; git's answer, when it is done; else a look again soon
+ | (git_pump)[ @(p.git) ]
+ | IF [ p.git.asking ]
+ |  | (ui.wake_in)[ 30 ]
+ |  \_
  |
  | IF [ (ui.focused)[ id ] ]
  |  | (move_keys)[ ui | @(p.table.list) ]
@@ -503,12 +583,15 @@ ABYSS main_pane: [ @Ui ui | @MainPane p | @CONST C1 cwd | @String go ]
  | p.widths{COL_SIZE} = -MAIN_SIZE
  | p.widths{COL_DATE} = -MAIN_DATE
  |
- | (ui.box)[ "" | GROW | GROW ]
+ | ((ui.box)[ "" | GROW | GROW ].pads)[ ui.theme.box_pad | 0 | 0 | 0 ]
  | (ui.title)[]
+ | @CONST C1 title = SELECT [ p.trash | "Trash" | (p.name.cstr)[] ]
  | IF [ (p.filter.size)[] > 0 ]
- |  | ((ui.pen)[ ui.theme.title ].print)[ "%s · %d of %d" | (p.name.cstr)[] | n | (p.all.size)[] AS I32 ]
+ |  | ((ui.pen)[ ui.theme.title ].print)[ "%s · %d of %d" | title | n | (p.all.size)[] AS I32 ]
+ | ELIF [ p.git.on && (p.git.branch.size)[] > 0 ]
+ |  | ((ui.pen)[ ui.theme.title ].print)[ "%s · %d · git:%s" | title | n | (p.git.branch.cstr)[] ]
  | ELSE
- |  | ((ui.pen)[ ui.theme.title ].print)[ "%s · %d" | (p.name.cstr)[] | n ]
+ |  | ((ui.pen)[ ui.theme.title ].print)[ "%s · %d" | title | n ]
  |  \_
  | ; the mode, in the bottom edge, as vim has it at the bottom
  | I32 lo = 0
@@ -519,6 +602,9 @@ ABYSS main_pane: [ @Ui ui | @MainPane p | @CONST C1 cwd | @String go ]
  | ELIF [ (chosen_rows)[ p | @lo | @hi ] ]
  |  | (ui.subtitle)[]
  |  | ((ui.pen)[ (bold)[ C_MARK ] ].print)[ "-- VISUAL LINE -- %d" | hi - lo + 1 ]
+ | ELIF [ p.trash ]
+ |  | (ui.subtitle)[]
+ |  | ((ui.pen)[ (fg)[ DIM ] ].print)[ "[u] restore · [X] delete · [Z] empty" ]
  |  \_
  | ; the mouse, before the table takes the press: a right one puts the
  | ; cursor on its row and offers its actions; Shift and a left one chooses

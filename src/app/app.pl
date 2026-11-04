@@ -12,6 +12,7 @@ USE <modular.pl>
 !USES <../core/tasks.pl>
 !USES <../core/trash.pl>
 !USES <../core/config.pl>
+!USES <../core/job.pl>
 !USES <../ui/places.pl>
 !USES <../ui/root.pl>
 !USES <../ui/main.pl>
@@ -38,6 +39,10 @@ TYPE Prompt: ENUM
  | PR_FILTER        ; letters typed into the path bar: the main column narrows
  | PR_MENU          ; a row's actions, offered by a right press: a click or a key
  | PR_CHOOSE        ; o: which program to open `pending` with, 1 to 9, e to type
+ | PR_SHELL         ; : a command for sh, run here, `pending` as "$@"
+ | PR_CHMOD         ; c : a mode for the chosen files, octal or u+x,go-w; -R first for folders' insides
+ | PR_CHOWN         ; C : user, user:group or :group for the chosen files; -R first too
+ | PR_CANCEL        ; K : y or n, for the task `cancel_id`
  \_
 
 TYPE Tab: STRUCT
@@ -57,6 +62,8 @@ TYPE AppData: STRUCT
  | I32 rows
  |
  | Vector<Task> tasks
+ | U32 task_cur             ; the task the keys act on, by id; 0: the oldest that runs
+ | U32 cancel_id            ; PR_CANCEL: the task asked about
  | Vector<String> clip      ; what y or d took, full paths
  | B1 clip_cut              ; d: the paste moves them
  | U64 refreshed            ; now_ms the columns were last read for a task
@@ -66,6 +73,8 @@ TYPE AppData: STRUCT
  | InputState filter_field  ; and for the filter, in the path bar
  | String renaming          ; PR_RENAME: the full path
  | Vector<String> pending   ; PR_DELETE: what goes
+ | B1 emptying              ;   Z: all of the trash, the question says so
+ | I32 empty_n              ;   and how many items it holds
  | Vector<String> undo_from ; the last batch put in the trash: where each was,
  | Vector<String> undo_put  ;   and where it went -- u puts them back
  | Vector<String> choices   ; PR_CHOOSE: the commands on offer, term: before
@@ -81,6 +90,10 @@ TYPE AppData: STRUCT
  | C1 clicked{16}           ; a key a click stands for, this frame: "y" for the
  |                          ;   [y] copy clicked; "" for none
  | I32 close_tab            ; a tab middle-clicked, to close; -1: none
+ | Job git_job              ; a / A : git add or restore, at work
+ | B1 git_busy
+ | B1 git_staging          ;   and which of the two it is
+ | I32 git_n                ;   on how many files
  |
  | PlacesPane  places
  | RootPane    root
@@ -211,6 +224,7 @@ ABYSS app_refresh: [ @AppData a | B1 all ]
  |  | RET []
  |  \_
  | a.listing.stale = TRUE
+ | a.places.read = FALSE            ; the trash's count may have changed
  | (a.root.cwd.deinit)[]
  | a.root.cwd = (String.of)[ "" ]
  | (a.preview.path.deinit)[]
@@ -282,7 +296,7 @@ IFACE AppOps: [ @AppData me ]
  |  | IF [ i == (me.tab AS USIZE) || i >= (me.tabs.size)[] ]
  |  |  | RET []
  |  |  \_
- |  | (me.tabs.at)[ me.tab AS USIZE ].cursor = me.listing.table.list.cursor
+ |  | (me.tabs.at)[ me.tab AS USIZE ].cursor = (main_unfiltered_row)[ @(me.listing) ]
  |  | me.tab = i AS U32
  |  | (tab_enter)[ me ]
  |  \_
@@ -294,7 +308,7 @@ IFACE AppOps: [ @AppData me ]
  |  |  | (app_note)[ me | "all nine tabs are in use: x closes one" ]
  |  |  | RET []
  |  |  \_
- |  | I32 at = (tab_add)[ me | (me.cwd.cstr)[] | me.listing.table.list.cursor | slot ]
+ |  | I32 at = (tab_add)[ me | (me.cwd.cstr)[] | (main_unfiltered_row)[ @(me.listing) ] | slot ]
  |  | (me.open_tab)[ at AS USIZE ]
  |  \_
  |
@@ -373,6 +387,8 @@ IFACE AppOps: [ @AppData me ]
  |  | (strings_clear)[ @(me.choices) ]
  |  | (me.choices.deinit)[]
  |  | (me.note.deinit)[]
+ |  | (job_stop)[ @(me.git_job) ]
+ |  | (me.git_job.out.deinit)[]
  |  \_
  |
  + ANONYMOUS:

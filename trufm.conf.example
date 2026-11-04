@@ -1,11 +1,11 @@
-# pluf -- ~/.config/pluf/config (or the file $PLUF_CONFIG names)
+# trufm -- ~/.config/trufm/config (or the file $TRUFM_CONFIG names)
 #
 # A line each: key = value. A # at the start of a line, or " # " after a
 # value, begins a comment. Every key is optional; what is left out keeps the
-# value shown here. A line pluf cannot read is reported on stderr and
+# value shown here. A line trufm cannot read is reported on stderr and
 # skipped.
 #
-# Bookmarks are a file of their own, ~/.config/pluf/places, in the same
+# Bookmarks are a file of their own, ~/.config/trufm/places (or under $XDG_CONFIG_HOME), in the same
 # form as place = below; b adds the folder you are in, and D on one in the
 # places column takes it off again.
 
@@ -13,6 +13,7 @@
 
 hidden = true               # dotfiles in the main column and the preview; . flips it while running
 root_hidden = false         # and in the parent column, while hidden is on (the folder you came from always shows)
+git = true                 # M + ? U beside the names in a git work tree: changed, staged, new, in conflict
 
 sort = name                 # the main column's order: name | size | date
 sort_desc = false           # largest / newest / Z first
@@ -30,7 +31,7 @@ preview_width = 20
 # --- places -----------------------------------------------------------------------
 
 # the places column, top to bottom: home (key h), the standard places, the
-# place = lines below, the bookmarks b added (~/.config/pluf/places), and
+# place = lines below, the bookmarks b added (~/.config/trufm/places, or under $XDG_CONFIG_HOME), and
 # the mounted disks. ' and a place's key jumps there from any column
 
 # Desktop (e), Documents (o), Downloads (d), Music (m), Pictures (p),
@@ -57,7 +58,7 @@ places.devices = true       # the DEVICES section
 #   by the file's extension -- or, with a / in it, by its MIME type, as
 #   `file --mime-type` says: open.video/* = mpv, open.text/* = ... -- so a
 #   README with no extension still finds its editor. term: -- a program that wants the terminal (an editor, a
-#   pager): pluf steps aside till it ends; in a window (--gui) it opens in
+#   pager): trufm steps aside till it ends; in a window (--gui) it opens in
 #   $TERMINAL, or xterm. Any other runs in the background and is left to
 #   run. The command goes to sh, so $EDITOR and the like work; %f is where
 #   the files go, at the end without it. A file's name never goes into the
@@ -76,7 +77,7 @@ open.video/*,audio/* = mpv
 # preview.<ext>[,<ext>...] = [image:] command
 #   What the command prints is shown in the preview, colours and all (so
 #   bat's highlighting shows). image: -- what it prints is a picture, PNG or
-#   PPM. It runs beside pluf, never holding it still, and is killed when the
+#   PPM. It runs beside trufm, never holding it still, and is killed when the
 #   cursor moves on. Rules fit as open. ones do: by extension, or by MIME
 #   type (image/*), then preview.*. With none, text and PNG/QOI/PPM show as
 #   they are, and anything else as `file` describes it.
@@ -92,7 +93,7 @@ preview.audio/* = exiftool %f
 # E unpacks the archive under the cursor (or every one chosen with V) as a
 # task: always into a new folder named for it -- foo.tar.gz into foo/, or
 # foo (2)/ -- and if all it held was one folder or file, that is moved up
-# in its place. Without a rule pluf knows tar.*, zip, jar, 7z, iso, cpio,
+# in its place. Without a rule trufm knows tar.*, zip, jar, 7z, iso, cpio,
 # deb (by bsdtar), rar (by unrar, where it is), and a lone .gz .bz2 .xz
 # .zst .lz4 file (decompressed).
 #
@@ -103,7 +104,9 @@ preview.audio/* = exiftool %f
 
 # --- tabs -------------------------------------------------------------------------
 
-# folders opened as tabs at the start, after the one pluf was started in;
+# folders opened as tabs at the start, after the one trufm was started in;
+# only on a first run: after it the tabs, hidden and sort of the last run
+# come back from ~/.config/trufm/state (delete it to start afresh);
 # one line a tab, up to 9 in all; ~ is home; a folder not there is skipped
 # tab = ~/Downloads
 # tab = ~/Projects

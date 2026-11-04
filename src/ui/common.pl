@@ -10,6 +10,7 @@ USE <std/os/os.pl>
 
 USE <modular.pl>
 !USES <../core/fs.pl>
+!USES <../core/trash.pl>
 !USES <look.pl>
 
 CONST I32 ICON_W = 2        ; ▸, ✗ or nothing, and a space
@@ -25,7 +26,9 @@ TYPE FileRecord: STRUCT
  | B1 exec                  ; a file someone may run: a x in its mode
  | I32 count                ; a folder's entries; -1: it cannot be read
  | U64 size
- | I64 modified             ; seconds since 1970
+ | I64 modified             ; seconds since 1970; in the trash, when it went there
+ | String origin            ; in the trash: the full path it was at; "" for none
+ | I64 deleted              ; in the trash: when it went there; 0: not known
  \_
 
 ; --- records --------------------------------------------------------------------
@@ -33,6 +36,7 @@ TYPE FileRecord: STRUCT
 ABYSS records_clear: [ @Vector<FileRecord> v ]
  | FOR [ USIZE i = 0 | i < (v.size)[] | i += 1 ]
  |  | ((v.at)[i].name.deinit)[]
+ |  | ((v.at)[i].origin.deinit)[]
  |  \_
  | (v.clear)[]
  \_
@@ -73,6 +77,8 @@ FileRecord record_of: [ @CONST C1 dir | @DirEntry e ]
  | r.hidden = e.name{0} == '.'
  | r.dir = e.kind == FS_DIR
  | r.count = -1
+ | r.origin = (String.of)[ "" ]
+ | r.deleted = 0
  |
  | C1 path{4096}
  | BufferSink b = (BufferSink.over)[ path | 4096 ]
@@ -92,6 +98,27 @@ FileRecord record_of: [ @CONST C1 dir | @DirEntry e ]
  |  | r.count = (count_entries)[ path AS @CONST C1 ]
  |  \_
  | RET [ r ]
+ \_
+
+; the rows of a trash's files/ read from `dir`: each one's origin and the
+; date it went, from its info file. `modified` becomes that date, so the
+; column and the sort show it. A row without a usable info file keeps its own
+ABYSS records_trash: [ @Vector<FileRecord> v | @CONST C1 dir ]
+ | FOR [ USIZE i = 0 | i < (v.size)[] | i += 1 ]
+ |  | @FileRecord e = (v.at)[ i ]
+ |  | String item = (join_path)[ dir | (e.name.cstr)[] ]
+ |  | C1 path{4096}
+ |  | I64 when = -1
+ |  | IF [ (trash_origin)[ (item.cstr)[] | path | @when ] ]
+ |  |  | (e.origin.deinit)[]
+ |  |  | e.origin = (String.of)[ path AS @CONST C1 ]
+ |  |  \_
+ |  | IF [ when > 0 ]
+ |  |  | e.deleted = when
+ |  |  | e.modified = when
+ |  |  \_
+ |  | (item.deinit)[]
+ |  \_
  \_
 
 ; folders first, then by name
@@ -223,6 +250,24 @@ ABYSS ask_go: [ @String go | I32 how | @CONST C1 cwd | @CONST C1 dir | @CONST Fi
  |  | (go.deinit)[]
  |  | ?go = (String.of)[ path AS @CONST C1 ]
  |  \_
+ \_
+
+; the first folder of `dir` that can be entered, as `dir` is listed (folders
+; first, by name; hidden ones only if `hidden`), as a path in `out`, which
+; is replaced. FALSE: there is none, `out` is left as it was
+B1 first_subfolder: [ @String out | @CONST C1 dir | B1 hidden ]
+ | Vector<FileRecord> rows
+ | POSTLUDE (records_free)[ @rows ]
+ | (read_folder)[ @rows | dir | hidden | "" ]
+ | FOR [ USIZE i = 0 | i < (rows.size)[] | i += 1 ]
+ |  | @CONST FileRecord r = (rows.at)[ i ]
+ |  | IF [ r.dir && !(r.broken) && r.count >= 0 ]
+ |  |  | (out.deinit)[]
+ |  |  | ?out = (join_path)[ dir | (r.name.cstr)[] ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  \_
+ | RET [ FALSE ]
  \_
 
 ; --- pieces of a row ------------------------------------------------------------
