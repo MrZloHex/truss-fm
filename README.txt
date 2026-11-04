@@ -6,129 +6,211 @@
    ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝
 
 
-  ░▒▓█ trufm  █▓▒░
-  <A short, precise description of the application.>
+  ░▒▓█ trufm █▓▒░
+  A file manager for the terminal and X11, written in Plum.
 
   ───────────────────────────────────────────────────────────────
   ▓ OVERVIEW
-  <APP_NAME> is a TRUSS <application/utility/library> written in
-  <LANGUAGE>.
+  trufm is a file manager and picker in the TRUSS application suite.
+  It is written in Plum and uses Modular
 
-  ▪ <What the program does and why it exists>
-  ▪ <Which problem it solves>
-  ▪ <How it fits into the TRUSS suite>
+  ▪ Run inside a terminal (TUI) or in a separate X11 window
+  ▪ Browse files through places, parent, file list, and preview columns
+  ▪ Work with multiple tabs, bookmarks, and mounted devices
+  ▪ Open files with configurable external programs
+  ▪ Manage files without leaving the keyboard
 
   ───────────────────────────────────────────────────────────────
   ▓ ARCHITECTURE
-  ▪ LANGUAGE:     <Language and version>
-  ▪ INTERFACE:    <TUI / GUI / CLI / daemon / library>
-  ▪ BACKEND:      <Wayland / X11 / terminal / none>
-  ▪ DEPENDENCIES: <Libraries or "none">
-  ▪ COMPONENTS:   <Important modules, if applicable>
+  ▪ LANGUAGE:    Plum (.pl)
+  ▪ COMPILER:    plc (Plum compiler)
+  ▪ UI:          Modular; terminal UI and X11 window mode
+  ▪ BUILD:       GNU Make; cc for final linking
+  ▪ LIBRARY:     libmodular.a, built from the Modular source tree
+  ▪ LINKING:     math, X11, Xft, Xrender, pthread
+  ▪ CONFIG:      key = value text file
+  ▪ STATE:       tabs, active tab, sort mode, hidden-file setting
 
   ───────────────────────────────────────────────────────────────
   ▓ FEATURES
-  ▪ <Primary feature>
-  ▪ <Secondary feature>
-  ▪ <Another feature>
-  ▪ <Optional integration with other TRUSS tools>
+  ▪ Vim-like movement, mouse navigation, and built-in key reference
+  ▪ Search/filter, sorting by name/size/date, hidden-file toggle
+  ▪ Up to nine tabs, places, bookmarks, and device navigation
+  ▪ Copy, cut, paste, rename, new folder, and symbolic-link paste
+  ▪ Freedesktop Trash with restore; separate permanent deletion
+  ▪ Recursive permission and owner changes
+  ▪ Archive extraction with progress reporting
+  ▪ Background file tasks: pause, cancel, retry failed operations
+  ▪ Git file-status marks, staging/unstaging, and diff preview
+  ▪ Text and image preview; configurable preview commands
+  ▪ Per-extension or MIME-based file associations
+  ▪ Shell command execution in the current directory
+  ▪ Saved session state across launches
 
   ───────────────────────────────────────────────────────────────
   ▓ REQUIREMENTS
-  ▪ <Operating system / minimum environment>
-  ▪ <Compiler or runtime version>
-  ▪ <Build dependencies>
-  ▪ <Optional dependencies, if any>
+  ▪ Linux / Unix-like development environment
+  ▪ Plum compiler (plc), with its standard library
+  ▪ Modular source tree, including build support for libmodular.a
+  ▪ GNU Make, a C compiler/linker, and development libraries for
+    X11, Xft, Xrender, pthread, and libm
+  ▪ A terminal supporting the TUI; X server or Xwayland for GUI mode
+
+  Optional runtime tools depend on configuration. Examples include
+  git, xdg-open, bat, ImageMagick (magick), poppler (pdftoppm),
+  ffmpeg, bsdtar, mpv, imv, zathura, and exiftool.
+  Not all of these are required for the basic file manager.
 
   ───────────────────────────────────────────────────────────────
-  ▓ BUILD & INSTALL
-  Build:
+  ▓ BUILD & RUN
+  Clone:
+      git clone https://github.com/MrZloHex/truss-fm.git
+      cd truss-fm
 
-    <build command>
+  Build (set paths to your local Plum and Modular installations):
+      make PLC=/path/to/plc MODULAR=/path/to/modular
 
-  Install:
+  The Makefile has developer-local defaults for PLC and MODULAR.
+  Override them if they do not match your system.
 
-    <install command>
+  Run in a terminal:
+      make run
+      make run ARGS=~/Projects
+      ./trufm ~/Projects
 
-  Uninstall (if supported):
+  Run in an X11 window:
+      make gui
+      make gui ARGS=~/Projects
+      ./trufm --gui ~/Projects
 
-    <uninstall command>
-
-  ───────────────────────────────────────────────────────────────
-  ▓ USAGE
-  Run:
-
-    <executable> [options] [arguments]
-
-  Examples:
-
-    <executable> <example argument>
-    <executable> --help
-
-  Keys / controls (for interactive applications):
-  ▪ <KEY> — <Action>
-  ▪ <KEY> — <Action>
-  ▪ <KEY> — Quit
+  Build options:
+      make V=1              show full compiler and linker commands
+      make test             build and run the Plum test programs
+      make clean            remove obj/ and trufm
+      make install          install to ~/.local/bin/trufm
+      make uninstall        remove the installed executable
+      make install PREFIX=/usr/local
 
   ───────────────────────────────────────────────────────────────
   ▓ CONFIGURATION
-  Config file: <path or "none">
+  Direct runs load ~/.config/trufm/config by default, unless
+  TRUFM_CONFIG supplies another file path.
 
-  Precedence (if applicable): CLI > environment > config > defaults.
+  The repository provides:
+      trufm.conf          local settings for make run / make gui
+      trufm.conf.example  annotated reference with supported keys
 
-  Environment:
-  ▪ <VARIABLE> — <Description> (default: <value>)
+  make run and make gui explicitly use the repository configuration:
+      make run CONF=trufm.conf.example
+      make gui CONF=another.conf
 
-  Options:
-  ▪ <flag> — <Description> (default: <value>)
+  To configure an installed executable:
+      mkdir -p ~/.config/trufm
+      cp trufm.conf.example ~/.config/trufm/config
 
-  ───────────────────────────────────────────────────────────────
-  ▓ FILES & DIRECTORIES
-  ▪ <path> — <Purpose>
-  ▪ <path> — <Purpose>
+  Or select another file for one invocation:
+      TRUFM_CONFIG=/path/to/trufm.conf trufm
 
-  XDG directories (if supported):
-  ▪ XDG_CONFIG_HOME — user configuration
-  ▪ XDG_DATA_HOME   — persistent user data
-  ▪ XDG_CACHE_HOME  — temporary/cache data
-
-  ───────────────────────────────────────────────────────────────
-  ▓ INTERFACE / PROTOCOL
-  <Delete this section if the application has no public interface.>
-
-  Commands / messages:
-  ▪ <COMMAND> <ARGS> — <Description>
-  ▪ <COMMAND> <ARGS> — <Description>
+  Main settings (all optional):
+  ▪ hidden, root_hidden       visibility of dotfiles
+  ▪ sort, sort_desc           name / size / date; reverse order
+  ▪ git                       Git status marks
+  ▪ confirm_delete            confirmation before permanent deletion
+  ▪ places_width              width of the places column (5–50%)
+  ▪ root_width                width of the parent column (5–50%)
+  ▪ preview_width             width of the preview column (5–50%)
+  ▪ places.standard, devices  standard folders and mounted devices
+  ▪ place                     custom place, shortcut, and label
+  ▪ tab                       initial tab (on the first run)
+  ▪ open.<ext> / open.<mime>   programs for opening files
+  ▪ preview.<ext>             preview commands, including image: output
+  ▪ extract.<ext>             custom extraction commands
+  ▪ color.<name>              interface palette in #rrggbb
 
   Example:
+      hidden = true
+      sort = name
+      git = true
+      place = w ~/Projects | Projects
+      open.md,txt = term: ${EDITOR:-vi}
+      preview.md = bat --color=always --style=plain --paging=never %f
 
-    <request / command>
-    <response / output>
-
-  ───────────────────────────────────────────────────────────────
-  ▓ DEVELOPMENT
-  Source layout:
-  ▪ src/       — <Description>
-  ▪ include/   — <Description>
-  ▪ tests/     — <Description>
-
-  Tests:
-
-    <test command>
-
-  Coding / contribution notes:
-  ▪ <Notes or a link to CONTRIBUTING>
+  Runtime state: $XDG_CONFIG_HOME/trufm/state, or
+                 ~/.config/trufm/state if XDG_CONFIG_HOME is unset.
+  Bookmarks:     $XDG_CONFIG_HOME/trufm/places, or
+                 ~/.config/trufm/places.
 
   ───────────────────────────────────────────────────────────────
-  ▓ LIMITATIONS
-  ▪ <Known limitation or "None documented">
-  ▪ <Planned work, if relevant>
+  ▓ CONTROLS
+  Moving and browsing:
+  ▪ j / k, arrows       move down / up
+  ▪ h / l, arrows       parent directory / enter or open
+  ▪ Tab / Shift-Tab     switch columns
+  ▪ gg / G              first / last entry
+  ▪ ~                   home directory
+  ▪ /                   filter current file list
+  ▪ .                   toggle hidden files
+  ▪ 1–9                 switch or create tab
+  ▪ t / x               new tab / close tab
+  ▪ b                   bookmark current folder
+
+  Files and tasks:
+  ▪ V                   select a range of files
+  ▪ y / d / p           copy / cut / paste
+  ▪ D / X               trash / permanently delete
+  ▪ u                   restore last trashed item
+  ▪ r / n               rename / new folder
+  ▪ L                   paste symbolic links
+  ▪ c / C               change mode / ownership
+  ▪ E                   extract an archive
+  ▪ P / K / R           pause / cancel / retry a task
+  ▪ a / A               Git stage / unstage
+  ▪ =                   show Git diff
+  ▪ i                   show file properties
+  ▪ o                   open with a selected program
+  ▪ :                   execute a shell command
+  ▪ ?                   full in-app help
+  ▪ q / Q               quit / quit and change shell directory
+
+  See the built-in help (?) for the complete key and mouse reference.
 
   ───────────────────────────────────────────────────────────────
-  ▓ LICENSE
-  <SPDX license identifier or license description>
-  <Copyright / author / repository URL, if applicable>
+  ▓ SHELL INTEGRATION
+  To make Q leave the calling shell in trufm's current directory,
+  load the function generated by the program into your shell.
+
+  Bash / Zsh:
+      eval "$(trufm --init bash)"
+
+  Fish:
+      trufm --init fish | source
+
+  The generated shell wrapper uses --cd-file; trufm itself cannot
+  change the working directory of its parent shell.
+
+  ───────────────────────────────────────────────────────────────
+  ▓ FILE HANDLING
+  Opening rules use a filename extension or MIME pattern, with
+  xdg-open as a fallback. A term: rule runs an interactive program
+  in the terminal; GUI mode can open it through $TERMINAL or xterm.
+
+  Preview rules can produce colored text or an image (PNG / PPM).
+  External previews are run separately and stopped when the
+  selection changes.
+
+  Archive extraction creates a separate destination directory.
+  Trash follows freedesktop conventions and can restore files.
+
+  ───────────────────────────────────────────────────────────────
+  ▓ SOURCE LAYOUT
+  src/main.pl         entry point, CLI options, session startup
+  src/app/            application state and file-opening behavior
+  src/core/           filesystem, config, Git, tasks, trash, rules
+  src/screen/         screen rendering, key handling, dialogs, help
+  src/ui/             columns, places, file list, preview, appearance
+  test/               filesystem, tasks, text, permissions, trash tests
+  Makefile            build, run, test, install, clean
 
   ───────────────────────────────────────────────────────────────
   ▓ FINAL WORDS
-  <A short closing line.>
+  A place for every file. A tool for every task.
