@@ -44,8 +44,29 @@ CONST I32 NVALUED = COUNT [ VALUED ]
 CONST @CONST C1 INIT_SH = "trufm() {\n  local f d\n  f=$(mktemp) || return\n  command trufm --cd-file \"$f\" \"$@\"\n  d=$(cat -- \"$f\" 2>/dev/null)\n  rm -f -- \"$f\"\n  [ -n \"$d\" ] && [ -d \"$d\" ] && [ \"$d\" != \"$PWD\" ] && cd -- \"$d\"\n}\n"
 CONST @CONST C1 INIT_FISH = "function trufm\n    set -l f (mktemp); or return\n    command trufm --cd-file $f $argv\n    set -l d (cat -- $f 2>/dev/null)\n    rm -f -- $f\n    if test -n \"$d\" -a -d \"$d\" -a \"$d\" != \"$PWD\"\n        cd -- $d\n    end\nend\n"
 
+ABYSS usage: [ @File to ]
+ | (to.puts)[ "trufm -- a file manager\n\n" ]
+ | (to.puts)[ "usage: trufm [FOLDER] [options]\n\n" ]
+ | (to.puts)[ "  --gui                        in an X11 window\n" ]
+ | (to.puts)[ "  --font NAME, --font-size N   the window's face\n" ]
+ | (to.puts)[ "  --init bash|zsh|fish         print a shell function: Q then leaves the shell\n" ]
+ | (to.puts)[ "                               in trufm's folder; eval \"$(trufm --init zsh)\"\n" ]
+ | (to.puts)[ "  --cd-file FILE               where Q writes that folder (the function uses it)\n" ]
+ | (to.puts)[ "  --help, --version\n\n" ]
+ | (to.puts)[ "With no folder named, trufm opens where it was last time, or here.\n" ]
+ | (to.puts)[ "The config is ~/.config/trufm/config ($TRUFM_CONFIG); in the program, ? shows every key.\n" ]
+ \_
+
 I32 main: [ I32 argc | @@C1 argv ]
  | Args args = (Args.over)[ argc | argv ]
+ | IF [ (args.has)[ "--help" ] || (args.has)[ "-h" ] ]
+ |  | (usage)[ @stdout ]
+ |  | RET [ 0 ]
+ |  \_
+ | IF [ (args.has)[ "--version" ] ]
+ |  | (stdout.puts)[ "trufm 0.1.0\n" ]
+ |  | RET [ 0 ]
+ |  \_
  |
  | ; trufm --init zsh: the function, to eval in the shell's rc file
  | Option<@CONST C1> init = (args.after)[ "--init" ]
