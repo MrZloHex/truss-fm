@@ -74,14 +74,21 @@ open.video/*,audio/* = mpv
 
 # --- the preview --------------------------------------------------------------------
 
+# highlight = true: trufm colours source files itself, in its own palette
+# (PLUM, C/C++, sh, Python, Rust, Go, JS/TS, JSON, TOML/INI/conf, YAML,
+# Makefile, Markdown, diffs); a preview. rule for such a file is not used.
+# false: the rules below get them, as before. Nothing else changes.
+highlight = true
+
 # preview.<ext>[,<ext>...] = [image:] command
-#   What the command prints is shown in the preview, colours and all (so
-#   bat's highlighting shows). image: -- what it prints is a picture, PNG or
+#   What the command prints is shown in the preview, colours and all (so a
+#   highlighter such as bat shows, for a language trufm does not colour, or
+#   with highlight = false). image: -- what it prints is a picture, PNG or
 #   PPM. It runs beside trufm, never holding it still, and is killed when the
 #   cursor moves on. Rules fit as open. ones do: by extension, or by MIME
 #   type (image/*), then preview.*. With none, text and PNG/QOI/PPM show as
 #   they are, and anything else as `file` describes it.
-preview.py,md,sh,c,h,rs,go,js,ts,json,toml,yaml,conf,pl = bat --color=always --style=plain --paging=never %f
+# preview.py,md,sh,c,h,rs,go,js,ts,json,toml,yaml,conf,pl = bat --color=always --style=plain --paging=never %f
 preview.jpg,jpeg,webp,gif,bmp,tiff,heic,avif = image: magick %f[0] -resize '600x600>' -depth 8 ppm:-
 preview.pdf = image: pdftoppm -png -r 40 -f 1 -l 1 %f
 preview.mp4,mkv,webm,avi,mov = image: ffmpeg -loglevel error -ss 3 -i %f -frames:v 1 -vf scale=480:-1 -f image2pipe -vcodec png -
@@ -113,7 +120,9 @@ preview.audio/* = exiftool %f
 
 # --- colours ----------------------------------------------------------------------
 
-# #rrggbb. Everything on screen is drawn in these fourteen
+# #rrggbb. Everything on screen is drawn in these fourteen. Highlighted code
+# takes them too: comments dim, strings exec, numbers accent, keywords dir,
+# types remote, directives warn, a diff's - error
 color.bg = #222222          # the columns
 color.bar = #282828         # the title bar
 color.cursor = #3a3a3a      # the cursor's row, a tab that is off

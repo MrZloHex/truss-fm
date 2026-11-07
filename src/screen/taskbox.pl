@@ -188,10 +188,10 @@ ABYSS task_line: [ @Ui ui | @App a | @Task t | B1 cur ]
 
 ; the last line, while something is asked: a name, or yes or no
 ABYSS task_status: [ @Ui ui | @App a ]
- | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_OPEN || a.prompt == PR_SHELL || a.prompt == PR_CHMOD || a.prompt == PR_CHOWN ]
+ | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_TOUCH || a.prompt == PR_OPEN || a.prompt == PR_SHELL || a.prompt == PR_CHMOD || a.prompt == PR_CHOWN ]
  |  | (ui.row)[ GROW | 1 ]
  |  | (ui.text)[ FIT | 1 ]
- |  | (ui.put)[ (bold)[ AMBER ] | SELECT [ a.prompt == PR_RENAME | " rename to " | SELECT [ a.prompt == PR_MKDIR | " new folder " | SELECT [ a.prompt == PR_OPEN | " open with " | SELECT [ a.prompt == PR_CHMOD | " chmod " | SELECT [ a.prompt == PR_CHOWN | " chown " | " : " ] ] ] ] ] ]
+ |  | (ui.put)[ (bold)[ AMBER ] | SELECT [ a.prompt == PR_RENAME | " rename to " | SELECT [ a.prompt == PR_MKDIR | " new folder " | SELECT [ a.prompt == PR_TOUCH | " new file " | SELECT [ a.prompt == PR_OPEN | " open with " | SELECT [ a.prompt == PR_CHMOD | " chmod " | SELECT [ a.prompt == PR_CHOWN | " chown " | " : " ] ] ] ] ] ] ]
  |  | I32 got = (ui.input)[ @(a.field) | (ui.id)[ "prompt" ] | GROW | SELECT [ a.prompt == PR_SHELL | "a command -- the chosen files are \"$@\"" | SELECT [ a.prompt == PR_CHMOD | "755 or u+x,go-w -- -R first: folders' insides too" | SELECT [ a.prompt == PR_CHOWN | "user, user:group or :group -- -R first: folders' insides too" | "a name" ] ] ] ]
  |  | (ui.text)[ FIT | 1 ]
  |  | (ui.put)[ (fg)[ DIM ] | " [enter] ok · [esc] cancel " ]
@@ -250,7 +250,7 @@ ABYSS task_status: [ @Ui ui | @App a ]
  |  |  | C1 key{8}
  |  |  | BufferSink b = (BufferSink.over)[ key | 8 ]
  |  |  | (b.print)[ "[%d]" | (i AS I32) + 1 ]
- |  |  | IF [ (answer)[ ui | key AS @CONST C1 | ((a.choices.at)[ i ].cstr)[] | 20 + (i AS I32) ] ]
+ |  |  | IF [ (answer)[ ui | key AS @CONST C1 | ((a.labels.at)[ i ].cstr)[] | 20 + (i AS I32) ] ]
  |  |  |  | a.prompt = PR_NONE
  |  |  |  | (open_pick)[ a | ui | i ]
  |  |  |  \_

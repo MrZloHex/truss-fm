@@ -44,6 +44,9 @@ ABYSS tick: [ @Ui ui | @App a ]
  |
  \_
 
+; the columns were drawn the frame before: their boxes are known
+B1 cols_laid = FALSE
+
 B1 frame: [ @Ui ui | @App a ]
  | IF [ ui.cols != a.cols || ui.rows != a.rows ]
  |  | a.cols = ui.cols
@@ -64,6 +67,7 @@ B1 frame: [ @Ui ui | @App a ]
  | (path_bar)[ ui | a | @go ]
  | IF [ a.help ]
  |  | (help_screen)[ ui | a ]
+ |  | cols_laid = FALSE
  | ELSE
  |  | (ui.row)[ GROW | GROW ]
  |  | (places_pane)[ ui | @(a.places) | (a.cwd.cstr)[] | @go ]
@@ -71,6 +75,12 @@ B1 frame: [ @Ui ui | @App a ]
  |  | (main_pane)[ ui | @(a.listing) | (a.cwd.cstr)[] | @go ]
  |  | (preview_pane)[ ui | @(a.preview) | @(a.listing) ]
  |  | (ui.close)[]
+ |  | ; the columns size their rows by the last frame's boxes: the first
+ |  | ; frame they are back in (after the help) had none, so once more
+ |  | IF [ !cols_laid ]
+ |  |  | cols_laid = TRUE
+ |  |  | (ui.redo)[]
+ |  |  \_
  |  \_
  |
  | (tasks_bar)[ ui | a ]

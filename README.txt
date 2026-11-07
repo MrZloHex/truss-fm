@@ -36,13 +36,15 @@
   ▪ Vim-like movement, mouse navigation, and built-in key reference
   ▪ Search/filter, sorting by name/size/date, hidden-file toggle
   ▪ Up to nine tabs, places, bookmarks, and device navigation
-  ▪ Copy, cut, paste, rename, new folder, and symbolic-link paste
+  ▪ Copy, cut, paste, rename, new file/folder, and symbolic-link paste
+  ▪ Copy names and paths to the clipboard; run programs with arguments
+  ▪ Open with the desktop's registered applications for a file's type
   ▪ Freedesktop Trash with restore; separate permanent deletion
   ▪ Recursive permission and owner changes
   ▪ Archive extraction with progress reporting
   ▪ Background file tasks: pause, cancel, retry failed operations
   ▪ Git file-status marks, staging/unstaging, and diff preview
-  ▪ Text and image preview; configurable preview commands
+  ▪ Text and image preview; built-in syntax highlighting in the palette; configurable preview commands
   ▪ Per-extension or MIME-based file associations
   ▪ Shell command execution in the current directory
   ▪ Saved session state across launches
@@ -123,6 +125,7 @@
   ▪ place                     custom place, shortcut, and label
   ▪ tab                       initial tab (on the first run)
   ▪ open.<ext> / open.<mime>   programs for opening files
+  ▪ highlight                 built-in code highlighting in the preview (default on)
   ▪ preview.<ext>             preview commands, including image: output
   ▪ extract.<ext>             custom extraction commands
   ▪ color.<name>              interface palette in #rrggbb
@@ -194,22 +197,14 @@
   xdg-open as a fallback. A term: rule runs an interactive program
   in the terminal; GUI mode can open it through $TERMINAL or xterm.
 
+  Source files trufm knows are colored by its own highlighter
+  (highlight = false hands them to preview rules).
   Preview rules can produce colored text or an image (PNG / PPM).
   External previews are run separately and stopped when the
   selection changes.
 
   Archive extraction creates a separate destination directory.
   Trash follows freedesktop conventions and can restore files.
-
-  ───────────────────────────────────────────────────────────────
-  ▓ SOURCE LAYOUT
-  src/main.pl         entry point, CLI options, session startup
-  src/app/            application state and file-opening behavior
-  src/core/           filesystem, config, Git, tasks, trash, rules
-  src/screen/         screen rendering, key handling, dialogs, help
-  src/ui/             columns, places, file list, preview, appearance
-  test/               filesystem, tasks, text, permissions, trash tests
-  Makefile            build, run, test, install, clean
 
   ───────────────────────────────────────────────────────────────
   ▓ FINAL WORDS

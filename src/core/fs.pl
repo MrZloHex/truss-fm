@@ -74,8 +74,22 @@ LOCAL ABYSS unescape: [ @C1 s ]
  \_
 
 TYPE Mount: STRUCT
- | String source            ; /dev/nvme0n1p2
+ | String source            ; /dev/nvme0n1p2, or user@host:/home
  | String path              ; where it is mounted: /
+ | B1 remote                ; over the network: sshfs, nfs, smb
+ \_
+
+; the file systems that are over the network, as mountinfo names them
+CONST @CONST C1 REMOTE_FS{} = [ "fuse.sshfs" | "sshfs" | "nfs" | "nfs4" | "cifs" | "smb3" | "fuse.rclone" | "fuse.davfs" | "davfs" | "" ]
+
+; is a file system of this type over the network?
+B1 fs_remote: [ @CONST C1 fstype ]
+ | FOR [ USIZE k = 0 | REMOTE_FS{k}{0} != 0 | k += 1 ]
+ |  | IF [ (str_eq)[ fstype | REMOTE_FS{k} ] ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  \_
+ | RET [ FALSE ]
  \_
 
 ABYSS mounts_free: [ @Vector<Mount> v ]
@@ -88,7 +102,8 @@ ABYSS mounts_free: [ @Vector<Mount> v ]
 
 ; every block device that is mounted, in `out`, as mountinfo has them: a
 ; device once, where it was mounted first; loop devices left out -- snaps
-; and the like -- but for an image the user mounted, under /run/media
+; and the like -- but for an image the user mounted, under /run/media.
+; And what is mounted over the network (sshfs, nfs, smb), `remote` set
 ABYSS read_mounts: [ @Vector<Mount> out ]
  | String text
  | POSTLUDE (text.deinit)[]
@@ -97,6 +112,7 @@ ABYSS read_mounts: [ @Vector<Mount> out ]
  |  \_
  | C1 word{WORD}
  | C1 mount{WORD}
+ | C1 kind{WORD}
  | @CONST C1 line = (text.cstr)[]
  | WHILE [ ?line != '\0' ]
  |  | ; id, parent, maj:min, root, then the mount point
@@ -108,8 +124,10 @@ ABYSS read_mounts: [ @Vector<Mount> out ]
  |  |  |  | BREAK
  |  |  |  \_
  |  |  \_
- |  | (field)[ (field)[ p | word ] | word ]
- |  | IF [ (str_starts)[ word | "/dev/" ] && (!((str_starts)[ word | "/dev/loop" ]) || (str_starts)[ mount | "/run/media/" ]) ]
+ |  | ; the type, then the source
+ |  | (field)[ (field)[ p | kind ] | word ]
+ |  | B1 remote = (fs_remote)[ kind AS @CONST C1 ]
+ |  | IF [ remote || ((str_starts)[ word | "/dev/" ] && (!((str_starts)[ word | "/dev/loop" ]) || (str_starts)[ mount | "/run/media/" ])) ]
  |  |  | B1 seen = FALSE
  |  |  | FOR [ USIZE i = 0 | i < (out.size)[] | i += 1 ]
  |  |  |  | IF [ ((out.at)[i].source.equals)[ word AS @CONST C1 ] ]
@@ -121,6 +139,7 @@ ABYSS read_mounts: [ @Vector<Mount> out ]
  |  |  |  | Mount m
  |  |  |  | m.source = (String.of)[ word AS @CONST C1 ]
  |  |  |  | m.path = (String.of)[ mount AS @CONST C1 ]
+ |  |  |  | m.remote = remote
  |  |  |  | (out.push)[ m ]
  |  |  |  \_
  |  |  \_

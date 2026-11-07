@@ -43,6 +43,15 @@ Color C_MATCH      = 0      ; what a filter matched, letter by letter
 Color C_NOMATCH    = 0       ; a file it left out
 Color C_TASK       = 0      ; █ of a task's bar
 Color C_TRACK      = 0        ; ─ what is left of it
+Color C_COMMENT    = 0        ; a comment in a highlighted preview
+Color C_STRING     = 0        ; a string, a `code` span
+Color C_NUMBER     = 0        ; a number
+Color C_KEYWORD    = 0        ; a keyword, a @@ hunk
+Color C_TYPE       = 0        ; a type, a key, $VAR, emphasis
+Color C_PREPROC    = 0        ; #include, !USES, [section], a diff's file lines
+Color C_GUIDE      = 0        ; PLUM's | and \_ marks
+Color C_ADD        = 0        ; a diff's + line
+Color C_DEL        = 0        ; and its - line
 
 ; each element its colour from the palette
 ABYSS look_derive: []
@@ -62,6 +71,15 @@ ABYSS look_derive: []
  | C_NOMATCH = LINE
  | C_TASK = AMBER
  | C_TRACK = SEL
+ | C_COMMENT = DIM
+ | C_STRING = SAGE
+ | C_NUMBER = AMBER
+ | C_KEYWORD = STEEL
+ | C_TYPE = OLIVE
+ | C_PREPROC = ORANGE
+ | C_GUIDE = LINE
+ | C_ADD = SAGE
+ | C_DEL = RED
  \_
 
 ; the palette as the config set it -- the colours it did not set as they

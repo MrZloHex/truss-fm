@@ -43,6 +43,7 @@ TYPE Prompt: ENUM
  | PR_CHMOD         ; c : a mode for the chosen files, octal or u+x,go-w; -R first for folders' insides
  | PR_CHOWN         ; C : user, user:group or :group for the chosen files; -R first too
  | PR_CANCEL        ; K : y or n, for the task `cancel_id`
+ | PR_TOUCH         ; N : a name for a new, empty file here
  \_
 
 TYPE Tab: STRUCT
@@ -79,6 +80,8 @@ TYPE AppData: STRUCT
  | Vector<String> undo_put  ;   and where it went -- u puts them back
  | Vector<String> choices   ; PR_CHOOSE: the commands on offer, term: before
  |                          ;   one that wants the terminal
+ | Vector<String> labels    ;   and what each is called, for the choice shown
+ | B1 copying               ; Y was pressed: n, p or d says what is copied
  | I32 clashes              ; PR_CLASH: how many names the paste finds taken
  | String clash_one         ;   the first of them
  | String note              ; a word at the bottom: done, or what failed
@@ -386,6 +389,8 @@ IFACE AppOps: [ @AppData me ]
  |  | (me.clash_one.deinit)[]
  |  | (strings_clear)[ @(me.choices) ]
  |  | (me.choices.deinit)[]
+ |  | (strings_clear)[ @(me.labels) ]
+ |  | (me.labels.deinit)[]
  |  | (me.note.deinit)[]
  |  | (job_stop)[ @(me.git_job) ]
  |  | (me.git_job.out.deinit)[]

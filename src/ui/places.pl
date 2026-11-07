@@ -39,6 +39,7 @@ TYPE Place: STRUCT
  | I32 used                 ; a disk's use in percent; -1: not a disk
  | I32 count                ; the trash row: its items; -1: not that row
  | B1 mark                  ; from the bookmarks file: D there takes it off
+ | B1 remote                ; a disk over the network: ● in place of its use
  \_
 
 TYPE PlacesPane: STRUCT
@@ -64,6 +65,7 @@ ABYSS place_add: [ @Vector<Place> v | PlaceKind k | @CONST C1 name | @CONST C1 p
  | r.key = (String.of)[ key ]
  | r.used = used
  | r.count = -1
+ | r.remote = FALSE
  | (v.push)[ r ]
  \_
 
@@ -278,7 +280,9 @@ LOCAL B1 removable: [ @CONST C1 path ]
  \_
 
 ; the disks that are mounted, by where -- a removable one by its label,
-; ⏏ before it; the device is in the top bar
+; ⏏ before it; one over the network by its folder, ● after it, its use not
+; asked for: a server that is gone would hold the frame still. The device
+; is in the top bar
 ABYSS disks_read: [ @Vector<Place> v ]
  | Vector<Mount> ms
  | (read_mounts)[ @ms ]
@@ -286,6 +290,13 @@ ABYSS disks_read: [ @Vector<Place> v ]
  | FOR [ USIZE i = 0 | i < (ms.size)[] | i += 1 ]
  |  | @Mount m = (ms.at)[ i ]
  |  | @CONST C1 at = (m.path.cstr)[]
+ |  | IF [ m.remote ]
+ |  |  | String label = (get_dirname)[ at ]
+ |  |  | (place_add)[ v | PK_PLACE | (label.cstr)[] | at | "" | -1 ]
+ |  |  | (label.deinit)[]
+ |  |  | (v.at)[ (v.size)[] - 1 ].remote = TRUE
+ |  |  | CONTINUE
+ |  |  \_
  |  | F32 used = ((get_phy_part_usage)[ at ].unwrap_or)[ 0.0 ]
  |  | IF [ (removable)[ at ] ]
  |  |  | String label = (get_dirname)[ at ]
@@ -653,6 +664,8 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  |  |  | BufferSink b = (BufferSink.over)[ use | 8 ]
  |  |  |  | (b.print)[ "%d%%" | r.used ]
  |  |  |  | (ui.put_cell)[ (fg)[ SELECT [ r.used >= DISK_FULL | ORANGE | DIM ] ] | use AS @CONST C1 | PLACE_USE_W | FALSE ]
+ |  |  | ELIF [ r.remote ]
+ |  |  |  | (ui.put_cell)[ (fg)[ C_REMOTE ] | "●" | PLACE_KEY_W | FALSE ]
  |  |  | ELSE
  |  |  |  | (ui.put_cell)[ (fg)[ DIM ] | (r.key.cstr)[] | PLACE_KEY_W | FALSE ]
  |  |  |  \_

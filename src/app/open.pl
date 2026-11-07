@@ -19,6 +19,7 @@ USE <std/os/process.pl>
 USE <modular.pl>
 !USES <../core/config.pl>
 !USES <../core/rules.pl>
+!USES <../core/desktop.pl>
 !USES <app.pl>
 !USES <../ui/main.pl>
 
@@ -133,7 +134,17 @@ ABYSS open_now: [ @AppData me | @Ui ui ]
  |  \_
  | @Opener o = (rule_for)[ @(CFG.openers) | ((me.pending.at)[ 0 ].cstr)[] ]
  | IF [ o == NULL ]
- |  | (open_run)[ me | ui | OPEN_FALLBACK | FALSE ]
+ |  | ; a program with nothing to open it: run, asking for its arguments
+ |  | IF [ (me.pending.size)[] == 1 && (is_program)[ ((me.pending.at)[ 0 ].cstr)[] ] ]
+ |  |  | (run_ask)[ me | ((me.pending.at)[ 0 ].cstr)[] ]
+ |  |  | ; the panes set these only while they have the focus: left on, the prompt
+ |  |  | ; would open again when it is done
+ |  |  | me.listing.want_open = FALSE
+ |  |  | me.preview.want_open = FALSE
+ |  |  | (strings_clear)[ @(me.pending) ]
+ |  | ELSE
+ |  |  | (open_run)[ me | ui | OPEN_FALLBACK | FALSE ]
+ |  |  \_
  | ELSE
  |  | (open_run)[ me | ui | (o.cmd.cstr)[] | o.term ]
  |  \_
@@ -141,8 +152,23 @@ ABYSS open_now: [ @AppData me | @Ui ui ]
 
 CONST USIZE MAX_CHOICES = 9
 
+; `cmd` on offer as `label`, if it is not yet and there is room for it
+LOCAL ABYSS open_offer: [ @AppData me | @CONST C1 label | @CONST C1 cmd | USIZE room ]
+ | IF [ (me.choices.size)[] >= room ]
+ |  | RET []
+ |  \_
+ | FOR [ USIZE k = 0 | k < (me.choices.size)[] | k += 1 ]
+ |  | IF [ ((me.choices.at)[ k ].equals)[ cmd ] ]
+ |  |  | RET []
+ |  |  \_
+ |  \_
+ | (me.choices.push)[ (String.of)[ cmd ] ]
+ | (me.labels.push)[ (String.of)[ label ] ]
+ \_
+
 ; the same, asked first with what: every rule that fits, in the config's
-; order, then xdg-open -- each once -- to pick from by 1 to 9
+; order, then the programs the desktop has for the file's type, then
+; xdg-open -- each once -- to pick from by 1 to 9
 ABYSS open_ask: [ @AppData me ]
  | (strings_clear)[ @(me.pending) ]
  | (main_selection)[ @(me.listing) | @(me.pending) ]
@@ -150,26 +176,42 @@ ABYSS open_ask: [ @AppData me ]
  |  | RET []
  |  \_
  | (strings_clear)[ @(me.choices) ]
+ | (strings_clear)[ @(me.labels) ]
  | Vector<@Opener> fits
  | (rules_for)[ @(CFG.openers) | ((me.pending.at)[ 0 ].cstr)[] | @fits ]
- | FOR [ USIZE i = 0 | i <= (fits.size)[] && (me.choices.size)[] < MAX_CHOICES | i += 1 ]
+ | FOR [ USIZE i = 0 | i < (fits.size)[] | i += 1 ]
  |  | C1 s{INPUT_CAP}
  |  | BufferSink b = (BufferSink.over)[ s | INPUT_CAP AS USIZE ]
- |  | IF [ i == (fits.size)[] ]
- |  |  | (b.print)[ "%s" | OPEN_FALLBACK ]
- |  | ELSE
- |  |  | @Opener o = (fits.get)[ i ]
- |  |  | (b.print)[ "%s%s" | SELECT [ o.term | "term: " | "" ] | (o.cmd.cstr)[] ]
- |  |  \_
- |  | B1 seen = FALSE
- |  | FOR [ USIZE k = 0 | k < (me.choices.size)[] | k += 1 ]
- |  |  | seen = seen || ((me.choices.at)[ k ].equals)[ s AS @CONST C1 ]
- |  |  \_
- |  | IF [ !seen ]
- |  |  | (me.choices.push)[ (String.of)[ s AS @CONST C1 ] ]
- |  |  \_
+ |  | @Opener o = (fits.get)[ i ]
+ |  | (b.print)[ "%s%s" | SELECT [ o.term | "term: " | "" ] | (o.cmd.cstr)[] ]
+ |  | (open_offer)[ me | s AS @CONST C1 | s AS @CONST C1 | MAX_CHOICES ]
  |  \_
  | (fits.deinit)[]
+ |
+ | ; the desktop's, those that are there to run; a place is left for xdg-open
+ | C1 mime{128}
+ | (mime_of)[ ((me.pending.at)[ 0 ].cstr)[] | mime ]
+ | IF [ mime{0} != '\0' ]
+ |  | Vector<DeskApp> apps
+ |  | (desk_apps_here)[ mime AS @CONST C1 | @apps ]
+ |  | FOR [ USIZE i = 0 | i < (apps.size)[] && (me.choices.size)[] < MAX_CHOICES - 1 | i += 1 ]
+ |  |  | @DeskApp d = (apps.at)[ i ]
+ |  |  | @CONST C1 cmd = (d.command.cstr)[]
+ |  |  | IF [ (str_starts)[ cmd | "term:" ] ]
+ |  |  |  | cmd += 5
+ |  |  |  \_
+ |  |  | B1 there = (program_there)[ cmd ]
+ |  |  | IF [ there && (d.tryexec.size)[] > 0 ]
+ |  |  |  | there = (program_there)[ (d.tryexec.cstr)[] ]
+ |  |  |  \_
+ |  |  | IF [ there ]
+ |  |  |  | (open_offer)[ me | (d.name.cstr)[] | (d.command.cstr)[] | MAX_CHOICES - 1 ]
+ |  |  |  \_
+ |  |  \_
+ |  | (desk_apps_free)[ @apps ]
+ |  | (apps.deinit)[]
+ |  \_
+ | (open_offer)[ me | OPEN_FALLBACK | OPEN_FALLBACK | MAX_CHOICES ]
  | me.prompt = PR_CHOOSE
  \_
 
@@ -251,4 +293,49 @@ ABYSS shell_typed: [ @AppData me | @Ui ui | @CONST C1 typed ]
  | (strings_clear)[ @(me.pending) ]
  | ; it may have changed anything: every column read again
  | (app_refresh)[ me | TRUE ]
+ \_
+
+; --- a program run with arguments ----------------------------------------------
+
+; is `path` a file that can be run? Through a link, as exec does
+B1 is_program: [ @CONST C1 path ]
+ | Result<FileInfo | IoError> fi = (fs_info)[ path ]
+ | IF [ (fi.is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ (fi.unwrap)[].kind == FS_FILE && ((fi.unwrap)[].mode & 0x49) != 0 ]
+ \_
+
+; the command line to run the file at `path` asked for: ./name, then the
+; arguments, which are typed. It is run as : runs a command
+ABYSS run_ask: [ @AppData me | @CONST C1 path ]
+ | String name = (get_dirname)[ path ]
+ | String word = (shell_word)[ (name.cstr)[] ]
+ | String line = (String.of)[ "./" ]
+ | (line.append)[ (word.cstr)[] ]
+ | (line.push)[ ' ' ]
+ | (input_set)[ @(me.field) | (line.cstr)[] ]
+ | me.prompt = PR_SHELL
+ | (name.deinit)[]
+ | (word.deinit)[]
+ | (line.deinit)[]
+ \_
+
+; e: the file under the cursor, to run
+ABYSS file_ask_run: [ @AppData me ]
+ | String path = (main_path)[ @(me.listing) | me.listing.table.list.cursor ]
+ | POSTLUDE (path.deinit)[]
+ | IF [ (path.size)[] == 0 ]
+ |  | RET []
+ |  \_
+ | Result<FileInfo | IoError> fi = (fs_info)[ (path.cstr)[] ]
+ | IF [ (fi.is_err)[] ]
+ |  | (app_note)[ me | (io_error_text)[ (fi.error)[] ] ]
+ |  | RET []
+ |  \_
+ | IF [ (fi.unwrap)[].kind != FS_FILE ]
+ |  | (app_note)[ me | "not a file to run" ]
+ |  | RET []
+ |  \_
+ | (run_ask)[ me | (path.cstr)[] ]
  \_

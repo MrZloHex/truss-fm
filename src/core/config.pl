@@ -53,6 +53,7 @@ TYPE Config: STRUCT
  | B1 std_places            ; Desktop, Documents, Downloads ... and / among the places
  | B1 devices               ; the DEVICES of the places column
  | B1 git                   ; marks in the main column for a folder in a git work tree
+ | B1 highlight             ; the preview colours the code it knows itself, not by a preview. rule
  | Vector<String> places    ; place = lines, as they were: key, path, | name
  | Vector<Opener> openers   ; open.<exts> = lines, in order: the first that fits
  | Vector<Opener> previewers ; preview.<exts> = lines, the same way
@@ -62,7 +63,7 @@ TYPE Config: STRUCT
 
 Config CFG = [ .hidden = TRUE | .root_hidden = FALSE | .places_width = 15 | .root_width = 25 |
                .preview_width = 20 | .sort = 0 | .sort_desc = FALSE | .confirm_delete = TRUE |
-               .std_places = TRUE | .devices = TRUE | .git = TRUE ]
+               .std_places = TRUE | .devices = TRUE | .git = TRUE | .highlight = TRUE ]
 
 ; --- values ---------------------------------------------------------------------
 
@@ -188,6 +189,9 @@ LOCAL B1 config_set: [ @CONST C1 k | @CONST C1 v ]
  |  \_
  | IF [ (str_eq)[ k | "git" ] ]
  |  | RET [ (read_bool)[ v | @(CFG.git) ] ]
+ |  \_
+ | IF [ (str_eq)[ k | "highlight" ] ]
+ |  | RET [ (read_bool)[ v | @(CFG.highlight) ] ]
  |  \_
  | IF [ (str_eq)[ k | "root_hidden" ] ]
  |  | RET [ (read_bool)[ v | @(CFG.root_hidden) ] ]

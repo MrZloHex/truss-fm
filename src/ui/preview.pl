@@ -1,5 +1,6 @@
 ; preview.pl -- the last column: what is under the main column's cursor. Text:
-; its first lines, a table's header in amber. Pictures: as the backend draws
+; its first lines, coloured by core/syntax.pl where it knows the language, else
+; a table's header in amber. Pictures: as the backend draws
 ; them. Folders: their listing. It is read once per file, as the cursor comes
 ; to it
 
@@ -15,6 +16,7 @@ USE <modular.pl>
 !USES <../core/fs.pl>
 !USES <../core/sys.pl>
 !USES <../core/text.pl>
+!USES <../core/syntax.pl>
 !USES <look.pl>
 !USES <../core/config.pl>
 !USES <../core/rules.pl>
@@ -61,6 +63,8 @@ TYPE PreviewPane: STRUCT
  | Job job                  ; the previewer the config gave this file, if any
  | B1 job_image             ; image: what it prints is a picture
  | B1 ansi                  ; the text is a previewer's: its colours are kept
+ | B1 has_lang              ; the text is highlighted here, by `lang`
+ | Lang lang
  | String via               ; that previewer's program, for the header
  | String desc              ; PV_FILE: file's word for it
  \_
@@ -78,6 +82,7 @@ ABYSS preview_forget: [ @PreviewPane p ]
  |  \_
  | (job_stop)[ @(p.job) ]
  | p.ansi = FALSE
+ | p.has_lang = FALSE
  | (p.via.deinit)[]
  | p.via = (String.of)[ "" ]
  | (p.desc.deinit)[]
@@ -178,6 +183,45 @@ B1 preview_by_diff: [ @PreviewPane p | @CONST C1 dir | @CONST C1 name ]
  | (p.via.deinit)[]
  | p.via = (String.of)[ "git diff" ]
  | RET [ TRUE ]
+ \_
+
+; the file at `path` is one the highlighter knows: by its name, or by the
+; #! of a file with no extension. Then `lang` is its language, and no
+; preview. rule is looked at
+B1 preview_own: [ @PreviewPane p | @CONST C1 path ]
+ | p.has_lang = FALSE
+ | IF [ !(CFG.highlight) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | @CONST C1 name = (p.entry.name.cstr)[]
+ | IF [ (syntax_by_name)[ @(p.lang) | name ] ]
+ |  | p.has_lang = TRUE
+ |  | RET [ TRUE ]
+ |  \_
+ | IF [ !((syntax_dotless)[ name ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | ; the first line of a file with no extension
+ | Result<File | IoError> r = (File.open)[ path | FILE_READ ]
+ | IF [ (r.is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | File f = (r.unwrap)[]
+ | POSTLUDE (f.close)[]
+ | C1 first{128}
+ | Result<USIZE | IoError> got = (f.read)[ first AS @U8 | 127 ]
+ | IF [ (got.is_err)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | first{(got.unwrap)[]} = '\0'
+ | FOR [ I32 i = 0 | first{i} != '\0' | i += 1 ]
+ |  | IF [ first{i} == '\n' ]
+ |  |  | first{i} = '\0'
+ |  |  | BREAK
+ |  |  \_
+ |  \_
+ | p.has_lang = (syntax_by_shebang)[ @(p.lang) | first AS @CONST C1 ]
+ | RET [ p.has_lang ]
  \_
 
 ; the previewer the config gives the file at `path`, started. FALSE: none
@@ -337,7 +381,7 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  |  | p.kind = PV_RUNNING
  | ELIF [ p.entry.dir ]
  |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | CFG.hidden | "" ] | PV_DIR | PV_UNREADABLE ]
- | ELIF [ (preview_by_rule)[ p | path AS @CONST C1 ] ]
+ | ELIF [ !((preview_own)[ p | path AS @CONST C1 ]) && (preview_by_rule)[ p | path AS @CONST C1 ] ]
  |  | p.kind = PV_RUNNING
  | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && p.entry.size <= PREVIEW_IMAGE ]
  |  | p.has_img = (image_load)[ @(p.img) | path AS @CONST C1 ]
@@ -583,11 +627,69 @@ ABYSS ansi_line: [ @Ui ui | @CONST C1 s | I32 width ]
  |  \_
  \_
 
+; what colour a kind of the highlighter's is
+Color syntax_color: [ I32 kind ]
+ | SWITCH [ kind ]
+ | CASE [ SY_COMMENT ]
+ |  | RET [ C_COMMENT ]
+ | CASE [ SY_STRING ]
+ |  | RET [ C_STRING ]
+ | CASE [ SY_NUMBER ]
+ |  | RET [ C_NUMBER ]
+ | CASE [ SY_KEYWORD ]
+ |  | RET [ C_KEYWORD ]
+ | CASE [ SY_TYPE ]
+ |  | RET [ C_TYPE ]
+ | CASE [ SY_PREPROC ]
+ |  | RET [ C_PREPROC ]
+ | CASE [ SY_GUIDE ]
+ |  | RET [ C_GUIDE ]
+ | CASE [ SY_HEAD ]
+ |  | RET [ C_HEADER ]
+ | CASE [ SY_ADD ]
+ |  | RET [ C_ADD ]
+ | CASE [ SY_DEL ]
+ |  | RET [ C_DEL ]
+ | ELSE
+ |  | RET [ TEXT ]
+ |  \_
+ \_
+
+; a line as the highlighter cuts it, a run to a colour; no more than `width`
+; cells. `?state` is what the line before left open
+ABYSS syntax_draw: [ @Ui ui | @Lang l | @CONST C1 s | @I32 state | @SynSpan sp | I32 width ]
+ | I32 n = (syntax_line)[ l | s | state | sp | PREVIEW_LINE + 2 ]
+ | C1 run{PREVIEW_LINE}
+ | I32 cells = 0
+ | FOR [ I32 k = 0 | k < n && cells < width | k += 1 ]
+ |  | I32 m = 0
+ |  | I32 i = sp{k}.at
+ |  | I32 stop = sp{k}.at + sp{k}.len
+ |  | WHILE [ i < stop && m + 1 < PREVIEW_LINE ]
+ |  |  | IF [ ((s{i} AS U8) & 0xC0) != 0x80 ]
+ |  |  |  | IF [ cells >= width ]
+ |  |  |  |  | BREAK
+ |  |  |  |  \_
+ |  |  |  | cells += 1
+ |  |  |  \_
+ |  |  | run{m} = s{i}
+ |  |  | m += 1
+ |  |  | i += 1
+ |  |  \_
+ |  | run{m} = '\0'
+ |  | IF [ m > 0 ]
+ |  |  | (ui.put)[ (fg)[ (syntax_color)[ sp{k}.kind ] ] | run AS @CONST C1 ]
+ |  |  \_
+ |  \_
+ \_
+
 ABYSS preview_text: [ @Ui ui | @PreviewPane p | I32 rows | I32 width ]
  | B1 markdown = (str_ends)[ (p.entry.name.cstr)[] | ".md" ]
  | B1 more = p.lines < 0 || p.lines > (rows AS I64)
  | I32 room = SELECT [ more | rows - 1 | rows ]
  | B1 header_seen = FALSE
+ | I32 carried = 0
+ | SynSpan spans{514}
  | USIZE at = 0
  | I32 shown = 0
  |
@@ -595,7 +697,9 @@ ABYSS preview_text: [ @Ui ui | @PreviewPane p | I32 rows | I32 width ]
  |  | C1 line{PREVIEW_LINE}
  |  | B1 table = (next_line)[ p | @at | line ]
  |  | Color c = TEXT
- |  | IF [ line{0} == '#' ]
+ |  | IF [ p.has_lang ]
+ |  |  | c = TEXT
+ |  | ELIF [ line{0} == '#' ]
  |  |  | c = SELECT [ markdown | C_HEADER | DIM ]
  |  | ELIF [ !header_seen && line{0} != '\0' ]
  |  |  | header_seen = TRUE
@@ -604,6 +708,8 @@ ABYSS preview_text: [ @Ui ui | @PreviewPane p | I32 rows | I32 width ]
  |  | (ui.text)[ GROW | 1 ]
  |  | IF [ p.ansi ]
  |  |  | (ansi_line)[ ui | line AS @CONST C1 | width ]
+ |  | ELIF [ p.has_lang ]
+ |  |  | (syntax_draw)[ ui | @(p.lang) | line AS @CONST C1 | @carried | spans | width ]
  |  | ELSE
  |  |  | (ui.put_cell)[ (fg)[ c ] | line AS @CONST C1 | width | TRUE ]
  |  |  \_

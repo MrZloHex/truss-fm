@@ -154,13 +154,20 @@ ABYSS rules_for: [ @Vector<Opener> rules | @CONST C1 path | @Vector<@Opener> out
  | RET [ (all.get)[ 0 ] ]
  \_
 
-; `cmd` as a line for sh, the files in "$@": at each %f, or else at the end
+; `cmd` as a line for sh, the files in "$@": at each %f, or else at the end;
+; %1 is the first file alone, "$1"
 String shell_line: [ @CONST C1 cmd ]
  | String out = (String.of)[ "" ]
  | B1 placed = FALSE
  | FOR [ USIZE i = 0 | cmd{i} != '\0' | i += 1 ]
  |  | IF [ cmd{i} == '%' && cmd{i + 1} == 'f' ]
  |  |  | (out.append)[ "\"$@\"" ]
+ |  |  | placed = TRUE
+ |  |  | i += 1
+ |  |  | CONTINUE
+ |  |  \_
+ |  | IF [ cmd{i} == '%' && cmd{i + 1} == '1' ]
+ |  |  | (out.append)[ "\"$1\"" ]
  |  |  | placed = TRUE
  |  |  | i += 1
  |  |  | CONTINUE
@@ -186,4 +193,32 @@ B1 program_there: [ @CONST C1 cmd ]
  | @CONST C1 argv{} = [ "sh" | "-c" | "eval \"set -- $1\" 2>/dev/null && command -v \"$1\" >/dev/null 2>&1" | "trufm" | word AS @CONST C1 | NULL ]
  | Result<ExitStatus | IoError> r = (process_run)[ argv ]
  | RET [ (r.is_ok)[] && (r.unwrap)[].exited && (r.unwrap)[].code == 0 ]
+ \_
+
+; `name` as one word for sh: as it is if nothing in it needs quoting, else
+; in single quotes, with each ' as '\''
+String shell_word: [ @CONST C1 name ]
+ | String out = (String.of)[ "" ]
+ | B1 plain = name{0} != '\0'
+ | FOR [ USIZE i = 0 | name{i} != '\0' | i += 1 ]
+ |  | C1 c = name{i}
+ |  | B1 safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+ |  | IF [ !safe && !(((str_find)[ "_./+,:@%^=-" | c ].is_some)[]) ]
+ |  |  | plain = FALSE
+ |  |  \_
+ |  \_
+ | IF [ plain ]
+ |  | (out.append)[ name ]
+ |  | RET [ out ]
+ |  \_
+ | (out.push)[ '\'' ]
+ | FOR [ USIZE i = 0 | name{i} != '\0' | i += 1 ]
+ |  | IF [ name{i} == '\'' ]
+ |  |  | (out.append)[ "'\\''" ]
+ |  | ELSE
+ |  |  | (out.push)[ name{i} ]
+ |  |  \_
+ |  \_
+ | (out.push)[ '\'' ]
+ | RET [ out ]
  \_

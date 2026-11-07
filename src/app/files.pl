@@ -20,6 +20,7 @@ USE <modular.pl>
 !USES <../core/job.pl>
 !USES <../core/git.pl>
 !USES <../core/config.pl>
+!USES <../core/clip.pl>
 !USES <../ui/main.pl>
 
 ; what is kept of git's words, and the commands: chmod -R and chown -R get their
@@ -424,6 +425,19 @@ ABYSS file_ask_mkdir: [ @AppData me ]
  | me.prompt = PR_MKDIR
  \_
 
+ABYSS file_ask_touch: [ @AppData me ]
+ | (input_set)[ @(me.field) | "" ]
+ | me.prompt = PR_TOUCH
+ \_
+
+; the folder read again, the cursor on `name` in it
+LOCAL ABYSS file_show: [ @AppData me | @CONST C1 name ]
+ | (app_refresh)[ me | TRUE ]
+ | (main_read)[ @(me.listing) | (me.cwd.cstr)[] ]
+ | me.listing.table.list.cursor = (main_find)[ @(me.listing) | name | me.listing.table.list.cursor ]
+ | me.listing.stale = FALSE
+ \_
+
 ; what was typed, done: the rename or the new folder
 ABYSS file_prompt_done: [ @AppData me | @CONST C1 name ]
  | Prompt was = me.prompt
@@ -441,6 +455,17 @@ ABYSS file_prompt_done: [ @AppData me | @CONST C1 name ]
  |  | (app_note)[ me | "that name is taken here" ]
  |  | RET []
  |  \_
+ | ; an empty file: made only if the name is free, as touch does
+ | IF [ was == PR_TOUCH ]
+ |  | I32 fd = (px_open)[ (to.cstr)[] | O_MAKE | 0x1B6 ]
+ |  | IF [ fd < 0 ]
+ |  |  | (app_note)[ me | (io_error_text)[ (io_error_of)[ (io_errno)[] ] ] ]
+ |  |  | RET []
+ |  |  \_
+ |  | (px_close)[ fd ]
+ |  | (file_show)[ me | name ]
+ |  | RET []
+ |  \_
  | ; not SELECT: it would do both
  | Result<B1 | IoError> r
  | IF [ was == PR_RENAME ]
@@ -453,10 +478,75 @@ ABYSS file_prompt_done: [ @AppData me | @CONST C1 name ]
  |  | RET []
  |  \_
  | ; the cursor goes to it, where the folder is read again
- | (app_refresh)[ me | TRUE ]
- | (main_read)[ @(me.listing) | (me.cwd.cstr)[] ]
- | me.listing.table.list.cursor = (main_find)[ @(me.listing) | name | me.listing.table.list.cursor ]
- | me.listing.stale = FALSE
+ | (file_show)[ me | name ]
+ \_
+
+; --- Y : names and paths on the clipboard -------------------------------------
+
+; `text` to the clipboard, and a note of `what` went: by a program, else as
+; an OSC 52 report in a terminal
+ABYSS clip_put: [ @AppData me | @Ui ui | @CONST C1 text | @CONST C1 what ]
+ | I32 got = (clip_send)[ text ]
+ | B1 ok = got == CLIP_SENT
+ | IF [ got == CLIP_NONE && (ui.can_pause)[] ]
+ |  | ; the terminal's own: stepped aside from, the report written, taken back
+ |  | (ui.pause)[ TRUE ]
+ |  | ok = (clip_terminal)[ text ]
+ |  | (ui.pause)[ FALSE ]
+ |  | IF [ !ok ]
+ |  |  | (app_note)[ me | "too long for the terminal's clipboard" ]
+ |  |  | RET []
+ |  |  \_
+ |  \_
+ | IF [ ok ]
+ |  | (app_note)[ me | what ]
+ | ELIF [ got == CLIP_NONE ]
+ |  | (app_note)[ me | "no clipboard program" ]
+ | ELSE
+ |  | (app_note)[ me | "the clipboard program failed" ]
+ |  \_
+ \_
+
+; Y was pressed and `how` came: n the names of the chosen rows, p their
+; paths, d the folder's, one to a line; they go to the clipboard
+ABYSS file_copy_text: [ @AppData me | @Ui ui | C1 how ]
+ | String text = (String.of)[ "" ]
+ | C1 said{64}
+ | said{0} = '\0'
+ | IF [ how == 'd' ]
+ |  | (text.append)[ (me.cwd.cstr)[] ]
+ |  | (str_copy)[ said | 64 | "copied folder path" ]
+ | ELSE
+ |  | Vector<String> paths
+ |  | (main_selection)[ @(me.listing) | @paths ]
+ |  | FOR [ USIZE i = 0 | i < (paths.size)[] | i += 1 ]
+ |  |  | IF [ i > 0 ]
+ |  |  |  | (text.push)[ '\n' ]
+ |  |  |  \_
+ |  |  | @CONST C1 path = ((paths.at)[ i ].cstr)[]
+ |  |  | IF [ how == 'p' ]
+ |  |  |  | (text.append)[ path ]
+ |  |  | ELSE
+ |  |  |  | String base = (get_dirname)[ path ]
+ |  |  |  | (text.append)[ (base.cstr)[] ]
+ |  |  |  | (base.deinit)[]
+ |  |  |  \_
+ |  |  \_
+ |  | BufferSink b = (BufferSink.over)[ said | 64 ]
+ |  | IF [ (paths.size)[] == 1 ]
+ |  |  | (b.print)[ "copied %s" | SELECT [ how == 'p' | "path" | "name" ] ]
+ |  | ELSE
+ |  |  | (b.print)[ "copied %d %s" | (paths.size)[] AS I32 | SELECT [ how == 'p' | "paths" | "names" ] ]
+ |  |  \_
+ |  | (strings_clear)[ @paths ]
+ |  | (paths.deinit)[]
+ |  \_
+ | IF [ (text.size)[] == 0 ]
+ |  | (app_note)[ me | "nothing to copy" ]
+ | ELSE
+ |  | (clip_put)[ me | ui | (text.cstr)[] | said AS @CONST C1 ]
+ |  \_
+ | (text.deinit)[]
  \_
 
 ; the file under the cursor asked a mode, its own in octal to begin with

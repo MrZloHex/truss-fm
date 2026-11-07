@@ -57,6 +57,26 @@ ABYSS keys_first: [ @Ui ui | @App a ]
  |  | (ui.redo)[]
  |  \_
  |
+ | ; Y then n, p or d: the names, the paths or the folder's path to the
+ | ; clipboard; anything else gives it up
+ | IF [ a.copying && (ui.key)[] != 0 ]
+ |  | a.copying = FALSE
+ |  | C1 how = '\0'
+ |  | IF [ (ui.take)[ 'n' AS U32 ] ]
+ |  |  | how = 'n'
+ |  | ELIF [ (ui.take)[ 'p' AS U32 ] ]
+ |  |  | how = 'p'
+ |  | ELIF [ (ui.take)[ 'd' AS U32 ] ]
+ |  |  | how = 'd'
+ |  | ELSE
+ |  |  | (ui.consume)[]
+ |  |  \_
+ |  | IF [ how != '\0' ]
+ |  |  | (file_copy_text)[ a | ui | how ]
+ |  |  \_
+ |  | (ui.redo)[]
+ |  \_
+ |
  | ; which program to open with: 1 to 9, e to type one, anything else gives
  | ; it up
  | IF [ a.prompt == PR_CHOOSE && (ui.key)[] != 0 ]
@@ -188,6 +208,13 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  |  | (file_ask_rename)[ a ]
  | ELIF [ (hit)[ ui | a | "n" ] ]
  |  | (file_ask_mkdir)[ a ]
+ | ELIF [ (hit)[ ui | a | "N" ] ]
+ |  | (file_ask_touch)[ a ]
+ | ELIF [ (hit)[ ui | a | "Y" ] ]
+ |  | a.copying = TRUE
+ |  | (app_note)[ a | "copy: [n]ame [p]ath [d]irectory" ]
+ | ELIF [ (hit)[ ui | a | "e" ] ]
+ |  | (file_ask_run)[ a ]
  | ELIF [ (hit)[ ui | a | "c" ] ]
  |  | (file_ask_chmod)[ a ]
  | ELIF [ (hit)[ ui | a | "C" ] ]
@@ -247,7 +274,7 @@ ABYSS keys_files: [ @Ui ui | @App a ]
  |  | did = FALSE
  |  \_
  | IF [ did ]
- |  | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_OPEN || a.prompt == PR_SHELL || a.prompt == PR_CHMOD || a.prompt == PR_CHOWN ]
+ |  | IF [ a.prompt == PR_RENAME || a.prompt == PR_MKDIR || a.prompt == PR_TOUCH || a.prompt == PR_OPEN || a.prompt == PR_SHELL || a.prompt == PR_CHMOD || a.prompt == PR_CHOWN ]
  |  |  | (ui.set_focus)[ (ui.id)[ "prompt" ] ]
  |  | ELIF [ a.prompt == PR_FILTER ]
  |  |  | (ui.set_focus)[ (ui.id)[ "filter" ] ]
