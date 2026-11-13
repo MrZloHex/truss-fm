@@ -584,7 +584,9 @@ ABYSS jump_keys: [ @Ui ui | @PlacesPane p | @String go ]
  \_
 
 ; `go`: the place opened, if one was
-ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
+; what the column does drawn or not: read again as disks come and go, and
+; the jump keys
+ABYSS places_keys: [ @Ui ui | @PlacesPane p | @String go ]
  | ; a disk mounted or taken away since: read again. Looked at now and then:
  | ; the program wakes at least once a second
  | IF [ p.read && (now_ms)[] - p.checked > MOUNTS_MS ]
@@ -606,7 +608,10 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  | (places_read)[ p ]
  |  \_
  | (jump_keys)[ ui | p | go ]
- |
+ \_
+
+ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
+ | (places_keys)[ ui | p | go ]
  | U32 id = (ui.id)[ "places" ]
  | ; a name takes what its key or its disk's use leaves, as wide as the
  | ; column was the last frame; the key or the use at the right border

@@ -46,6 +46,9 @@ TYPE Config: STRUCT
  | I32 places_width         ; the columns' widths, in percent of the screen
  | I32 root_width
  | I32 preview_width
+ | I32 root_min             ; the screen's columns under which the parent column goes,
+ | I32 preview_min          ;   then the preview, then the places
+ | I32 places_min
  | I32 sort                 ; the main column's: 0 name, 1 size, 2 date
  | B1 sort_desc
  | B1 confirm_delete        ; D asks first
@@ -62,7 +65,7 @@ TYPE Config: STRUCT
  \_
 
 Config CFG = [ .hidden = TRUE | .root_hidden = FALSE | .places_width = 15 | .root_width = 25 |
-               .preview_width = 20 | .sort = 0 | .sort_desc = FALSE | .confirm_delete = TRUE |
+               .preview_width = 20 | .root_min = 130 | .preview_min = 100 | .places_min = 70 | .sort = 0 | .sort_desc = FALSE | .confirm_delete = TRUE |
                .std_places = TRUE | .devices = TRUE | .git = TRUE | .highlight = TRUE ]
 
 ; --- values ---------------------------------------------------------------------
@@ -210,6 +213,15 @@ LOCAL B1 config_set: [ @CONST C1 k | @CONST C1 v ]
  |  \_
  | IF [ (str_eq)[ k | "preview_width" ] ]
  |  | RET [ (read_int)[ v | 5 | 50 | @(CFG.preview_width) ] ]
+ |  \_
+ | IF [ (str_eq)[ k | "root_min" ] ]
+ |  | RET [ (read_int)[ v | 0 | 1000 | @(CFG.root_min) ] ]
+ |  \_
+ | IF [ (str_eq)[ k | "preview_min" ] ]
+ |  | RET [ (read_int)[ v | 0 | 1000 | @(CFG.preview_min) ] ]
+ |  \_
+ | IF [ (str_eq)[ k | "places_min" ] ]
+ |  | RET [ (read_int)[ v | 0 | 1000 | @(CFG.places_min) ] ]
  |  \_
  | IF [ (str_eq)[ k | "sort" ] ]
  |  | IF [ (str_eq)[ v | "name" ] ]

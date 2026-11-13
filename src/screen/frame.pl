@@ -46,6 +46,8 @@ ABYSS tick: [ @Ui ui | @App a ]
 
 ; the columns were drawn the frame before: their boxes are known
 B1 cols_laid = FALSE
+; which side columns the last frame had, by width: 1 places, 2 parent, 4 preview
+I32 cols_shown = 7
 
 B1 frame: [ @Ui ui | @App a ]
  | IF [ ui.cols != a.cols || ui.rows != a.rows ]
@@ -69,11 +71,33 @@ B1 frame: [ @Ui ui | @App a ]
  |  | (help_screen)[ ui | a ]
  |  | cols_laid = FALSE
  | ELSE
+ |  | ; a narrower screen loses the parent column first, then the preview,
+ |  | ; then the places
+ |  | B1 places = ui.cols >= CFG.places_min
+ |  | B1 root = ui.cols >= CFG.root_min
+ |  | B1 preview = ui.cols >= CFG.preview_min
+ |  | I32 shown = SELECT [ places | 1 | 0 ] + SELECT [ root | 2 | 0 ] + SELECT [ preview | 4 | 0 ]
+ |  | IF [ shown != cols_shown ]
+ |  |  | cols_shown = shown
+ |  |  | (ui.redo)[]
+ |  |  \_
+ |  | ; the focus in a column that has gone: to the main one
+ |  | IF [ (!places && (ui.focused)[ (ui.id)[ "places" ] ]) || (!root && (ui.focused)[ (ui.id)[ "root" ] ]) || (!preview && (ui.focused)[ (ui.id)[ "preview" ] ]) ]
+ |  |  | (ui.set_focus)[ (ui.id)[ "main" ] ]
+ |  |  \_
  |  | (ui.row)[ GROW | GROW ]
- |  | (places_pane)[ ui | @(a.places) | (a.cwd.cstr)[] | @go ]
- |  | (root_pane)[ ui | @(a.root) | (a.cwd.cstr)[] | @go ]
+ |  | IF [ places ]
+ |  |  | (places_pane)[ ui | @(a.places) | (a.cwd.cstr)[] | @go ]
+ |  | ELSE
+ |  |  | (places_keys)[ ui | @(a.places) | @go ]
+ |  |  \_
+ |  | IF [ root ]
+ |  |  | (root_pane)[ ui | @(a.root) | (a.cwd.cstr)[] | @go ]
+ |  |  \_
  |  | (main_pane)[ ui | @(a.listing) | (a.cwd.cstr)[] | @go ]
- |  | (preview_pane)[ ui | @(a.preview) | @(a.listing) ]
+ |  | IF [ preview ]
+ |  |  | (preview_pane)[ ui | @(a.preview) | @(a.listing) ]
+ |  |  \_
  |  | (ui.close)[]
  |  | ; the columns size their rows by the last frame's boxes: the first
  |  | ; frame they are back in (after the help) had none, so once more
