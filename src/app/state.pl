@@ -146,8 +146,9 @@ ABYSS state_load: [ @AppData a | @CONST C1 start ]
  |  |  |  | fits = FALSE
  |  |  |  \_
  |  |  | IF [ fits ]
- |  |  |  | Result<String | IoError> full = (get_realpath)[ at ]
- |  |  |  | IF [ (full.is_ok)[] ]
+ |  |  |  | B1 up = (remote_ok_deep)[ at ]
+ |  |  |  | Result<String | IoError> full = (get_realpath)[ SELECT [ up | at | "/" ] ]
+ |  |  |  | IF [ up && (full.is_ok)[] ]
  |  |  |  |  | String d = (full.unwrap)[]
  |  |  |  |  | Result<FileInfo | IoError> fi = (fs_info)[ (d.cstr)[] ]
  |  |  |  |  | IF [ (fi.is_ok)[] && (fi.unwrap)[].kind == FS_DIR ]
@@ -181,5 +182,5 @@ ABYSS state_load: [ @AppData a | @CONST C1 start ]
  |  |  | t.cursor = 0
  |  |  \_
  |  \_
- | (tab_enter)[ a ]
+ | (tab_enter)[ a | -1 ]
  \_

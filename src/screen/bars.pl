@@ -248,12 +248,14 @@ ABYSS status_line: [ @Ui ui | @App a ]
  | (ui.text)[ FIT | 1 ]
  | IF [ e != NULL ]
  |  | String path = (main_path)[ m | at ]
- |  | Result<FileInfo | IoError> li = (fs_link_info)[ (path.cstr)[] ]
+ |  | ; a mount that does not answer is not asked: its row shows what it was
+ |  | B1 asked = (remote_ok)[ (path.cstr)[] ]
+ |  | Result<FileInfo | IoError> li = (fs_link_info)[ SELECT [ asked | (path.cstr)[] | "/" ] ]
  |  | ; not SELECT: an unwrap of a file gone since would trap
  |  | B1 link = FALSE
  |  | U32 bits = 0
  |  | I64 when = e.modified
- |  | IF [ (li.is_ok)[] ]
+ |  | IF [ asked && (li.is_ok)[] ]
  |  |  | FileInfo own = (li.unwrap)[]
  |  |  | link = own.kind == FS_LINK
  |  |  | bits = own.mode

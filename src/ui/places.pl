@@ -670,7 +670,7 @@ ABYSS places_pane: [ @Ui ui | @PlacesPane p | @CONST C1 cwd | @String go ]
  |  |  |  | (b.print)[ "%d%%" | r.used ]
  |  |  |  | (ui.put_cell)[ (fg)[ SELECT [ r.used >= DISK_FULL | ORANGE | DIM ] ] | use AS @CONST C1 | PLACE_USE_W | FALSE ]
  |  |  | ELIF [ r.remote ]
- |  |  |  | (ui.put_cell)[ (fg)[ C_REMOTE ] | "●" | PLACE_KEY_W | FALSE ]
+ |  |  |  | (ui.put_cell)[ (fg)[ SELECT [ (remote_up)[ (r.path.cstr)[] ] | C_REMOTE | C_REMOTE_DOWN ] ] | "●" | PLACE_KEY_W | FALSE ]
  |  |  | ELSE
  |  |  |  | (ui.put_cell)[ (fg)[ DIM ] | (r.key.cstr)[] | PLACE_KEY_W | FALSE ]
  |  |  |  \_

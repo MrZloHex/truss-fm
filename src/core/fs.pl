@@ -103,7 +103,8 @@ ABYSS mounts_free: [ @Vector<Mount> v ]
 ; every block device that is mounted, in `out`, as mountinfo has them: a
 ; device once, where it was mounted first; loop devices left out -- snaps
 ; and the like -- but for an image the user mounted, under /run/media.
-; And what is mounted over the network (sshfs, nfs, smb), `remote` set
+; And what is mounted over the network (sshfs, nfs, smb), `remote` set, at
+; every point it is mounted at
 ABYSS read_mounts: [ @Vector<Mount> out ]
  | String text
  | POSTLUDE (text.deinit)[]
@@ -134,7 +135,8 @@ ABYSS read_mounts: [ @Vector<Mount> out ]
  |  |  |  |  | seen = TRUE
  |  |  |  |  \_
  |  |  |  \_
- |  |  | IF [ !seen ]
+ |  |  | ; a device once, but a remote source can be mounted at two points
+ |  |  | IF [ !seen || remote ]
  |  |  |  | (unescape)[ mount ]
  |  |  |  | Mount m
  |  |  |  | m.source = (String.of)[ word AS @CONST C1 ]

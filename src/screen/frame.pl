@@ -39,6 +39,8 @@ ABYSS tick: [ @Ui ui | @App a ]
  | IF [ (a.note.size)[] > 0 && (now_ms)[] - a.note_at < NOTE_MS ]
  |  | (ui.wake_in)[ 500 ]
  |  \_
+ | ; the mounts over the network: what is asked of them taken in
+ | (remote_tick)[]
  | ; a git a or A at work
  | (git_action_step)[ ui | a ]
  |

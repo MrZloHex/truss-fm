@@ -26,6 +26,7 @@ USE <modular.pl>
 CONST USIZE PREVIEW_HEAD = 32768        ; what is kept of a text
 CONST U64 PREVIEW_COUNT = 16777216      ; past this its lines are not counted
 CONST U64 PREVIEW_IMAGE = 33554432      ; past this a picture is not opened
+CONST U64 PREVIEW_SMALL = 262144        ; up to this it is read here, past it by ImageMagick
 CONST I32 PREVIEW_LINE = 512            ; the most of a line that is looked at
 CONST I32 LABEL_W = 10                  ; modified, perm
 
@@ -37,6 +38,7 @@ TYPE PreviewKind: ENUM
  | PV_DIR
  | PV_BROKEN
  | PV_UNREADABLE
+ | PV_DOWN          ; on a mount over the network that does not answer
  | PV_RUNNING      ; a previewer is at work
  | PV_FILE          ; none fits: what `file` says it is
  \_
@@ -249,6 +251,28 @@ B1 preview_by_rule: [ @PreviewPane p | @CONST C1 path ]
  | RET [ TRUE ]
  \_
 
+; a picture with no rule, made small by ImageMagick beside the frames: read
+; here, a 12-megapixel PNG holds the screen for seconds. -1 not looked for
+; yet, 0 not there, 1 there
+CONST @CONST C1 PREVIEW_MAGICK = "magick %f[0] -resize '800x800>' -depth 8 ppm:-"
+I32 magick_there = -1
+
+B1 preview_by_magick: [ @PreviewPane p | @CONST C1 path ]
+ | IF [ magick_there < 0 ]
+ |  | magick_there = SELECT [ (program_there)[ PREVIEW_MAGICK ] | 1 | 0 ]
+ |  \_
+ | IF [ magick_there == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ !((job_start)[ @(p.job) | PREVIEW_MAGICK | path | PREVIEW_CMD_IMAGE ]) ]
+ |  | RET [ FALSE ]
+ |  \_
+ | p.job_image = TRUE
+ | (p.via.deinit)[]
+ | p.via = (String.of)[ "magick" ]
+ | RET [ TRUE ]
+ \_
+
 ; where a previewer's picture is put to be read: $XDG_CACHE_HOME/trufm, or
 ; ~/.cache/trufm, made if need be; `png` its kind
 ABYSS preview_cache: [ @C1 out | B1 png ]
@@ -263,6 +287,20 @@ ABYSS preview_cache: [ @C1 out | B1 png ]
  | (b.print)[ "/preview.%s" | SELECT [ png | "png" | "ppm" ] ]
  \_
 
+; ImageMagick gave no picture (not there, a format it lacks, a failure): the
+; file read here, if it is not too big for that; else what `file` says
+ABYSS preview_in_place: [ @Ui ui | @PreviewPane p ]
+ | IF [ p.entry.size <= PREVIEW_IMAGE ]
+ |  | p.has_img = (image_load)[ @(p.img) | (p.path.cstr)[] ]
+ |  \_
+ | IF [ p.has_img ]
+ |  | p.kind = PV_IMAGE
+ | ELSE
+ |  | (preview_describe)[ p ]
+ |  \_
+ | (ui.redo)[]
+ \_
+
 ; the previewer's work taken in: some more of what it printed, and once it
 ; is done, that shown -- as text with its colours, or as a picture
 ABYSS preview_pump: [ @Ui ui | @PreviewPane p ]
@@ -275,6 +313,11 @@ ABYSS preview_pump: [ @Ui ui | @PreviewPane p ]
  |  \_
  | @CONST C1 out = (p.job.out.cstr)[]
  | USIZE n = (p.job.out.size)[]
+ | B1 magick = p.job_image && (p.via.equals)[ "magick" ]
+ | IF [ magick && (n == 0 || !(p.job.ok)) ]
+ |  | (preview_in_place)[ ui | p ]
+ |  | RET []
+ |  \_
  | IF [ n == 0 && p.diff ]
  |  | (p.desc.deinit)[]
  |  | p.desc = (String.of)[ "no changes" ]
@@ -300,6 +343,9 @@ ABYSS preview_pump: [ @Ui ui | @PreviewPane p ]
  |  |  \_
  |  | IF [ p.has_img ]
  |  |  | p.kind = PV_IMAGE
+ |  | ELIF [ magick ]
+ |  |  | (preview_in_place)[ ui | p ]
+ |  |  | RET []
  |  | ELSE
  |  |  | (preview_describe)[ p ]
  |  |  \_
@@ -348,10 +394,10 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | C1 path{4096}
  | path{0} = '\0'
  | IF [ some ]
- |  | BufferSink b = (BufferSink.over)[ path | 4096 ]
- |  | (b.print)[ "%s/%s" | (m.cwd.cstr)[] | ((m.files.at)[ at AS USIZE ].name.cstr)[] ]
+ |  | (join_into)[ path | 4096 | (m.cwd.cstr)[] | ((m.files.at)[ at AS USIZE ].name.cstr)[] ]
  |  \_
- | IF [ (p.path.equals)[ path AS @CONST C1 ] ]
+ | ; a mount that was not answering is looked at again, as it comes back
+ | IF [ (p.path.equals)[ path AS @CONST C1 ] && (p.kind != PV_DOWN || !((remote_ok_deep)[ path AS @CONST C1 ])) ]
  |  | RET []
  |  \_
  |
@@ -365,11 +411,21 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | p.entry = ?((m.files.at)[ at AS USIZE ])
  | p.entry.name = (String.of)[ (p.entry.name.cstr)[] ]
  | p.entry.origin = (String.of)[ (p.entry.origin.cstr)[] ]
+ | ; a mount over the network that does not answer: nothing is called on it
+ | IF [ !((remote_ok)[ path AS @CONST C1 ]) ]
+ |  | p.kind = PV_DOWN
+ |  | RET []
+ |  \_
  | Result<FileInfo | IoError> fi = (fs_link_info)[ path AS @CONST C1 ]
  | IF [ (fi.is_ok)[] ]
  |  | ; the link's own: a broken one has no other
  |  | p.mode = (fi.unwrap)[].mode
  |  | p.entry.modified = SELECT [ p.entry.broken | (fi.unwrap)[].modified | p.entry.modified ]
+ |  \_
+ | ; a link into a mount that does not answer: not followed
+ | IF [ (fi.is_ok)[] && (fi.unwrap)[].kind == FS_LINK && !((remote_ok_deep)[ path AS @CONST C1 ]) ]
+ |  | p.kind = PV_DOWN
+ |  | RET []
  |  \_
  |
  | IF [ p.entry.broken ]
@@ -382,6 +438,11 @@ ABYSS update_preview: [ @PreviewPane p | @MainPane m ]
  | ELIF [ p.entry.dir ]
  |  | p.kind = SELECT [ (read_folder)[ @(p.files) | path AS @CONST C1 | CFG.hidden | "" ] | PV_DIR | PV_UNREADABLE ]
  | ELIF [ !((preview_own)[ p | path AS @CONST C1 ]) && (preview_by_rule)[ p | path AS @CONST C1 ] ]
+ |  | p.kind = PV_RUNNING
+ | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && p.entry.size <= PREVIEW_SMALL ]
+ |  | p.has_img = (image_load)[ @(p.img) | path AS @CONST C1 ]
+ |  | p.kind = SELECT [ p.has_img | PV_IMAGE | PV_BINARY ]
+ | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && (preview_by_magick)[ p | path AS @CONST C1 ] ]
  |  | p.kind = PV_RUNNING
  | ELIF [ (preview_is_image)[ (p.entry.name.cstr)[] ] && p.entry.size <= PREVIEW_IMAGE ]
  |  | p.has_img = (image_load)[ @(p.img) | path AS @CONST C1 ]
@@ -482,6 +543,8 @@ ABYSS preview_head: [ @Ui ui | @PreviewPane p | I32 width ]
  |  | (b.print)[ "folder · %d %s" | entries AS I32 | SELECT [ entries == 1 | "entry" | "entries" ] ]
  | ELIF [ p.kind == PV_BROKEN ]
  |  | (b.print)[ "link" ]
+ | ELIF [ p.kind == PV_DOWN ]
+ |  | (b.print)[ "remote · not answering" ]
  | ELIF [ p.kind == PV_RUNNING ]
  |  | (b.print)[ "%s · %s …" | size AS @CONST C1 | (p.via.cstr)[] ]
  | ELIF [ p.kind == PV_FILE ]
@@ -884,6 +947,10 @@ ABYSS props_chosen: [ @Ui ui | @MainPane m | I32 lo | I32 hi | I32 width ]
 ; device and mount
 ABYSS props_file: [ @Ui ui | @PreviewPane p | I32 width ]
  | Stat st
+ | IF [ !((remote_ok)[ (p.path.cstr)[] ]) ]
+ |  | (preview_note)[ ui | C_REMOTE_DOWN | "not answering" ]
+ |  | RET []
+ |  \_
  | IF [ !((px_stat_of)[ (p.path.cstr)[] | @st ]) ]
  |  | (preview_note)[ ui | C_BROKEN | "cannot be read" ]
  |  | RET []
@@ -1030,6 +1097,8 @@ ABYSS preview_body: [ @Ui ui | @PreviewPane p | Rect r | I32 width ]
  |  | (preview_note)[ ui | C_BROKEN | "✗ points to nothing" ]
  | ELIF [ p.kind == PV_UNREADABLE ]
  |  | (preview_note)[ ui | C_BROKEN | "cannot be read" ]
+ | ELIF [ p.kind == PV_DOWN ]
+ |  | (preview_note)[ ui | C_REMOTE_DOWN | "not answering" ]
  |  \_
  \_
 

@@ -363,14 +363,20 @@ ABYSS file_extract: [ @AppData me ]
  | Vector<String> paths
  | (main_selection)[ @(me.listing) | @paths ]
  | I32 started = 0
+ | I32 held = 0
  | FOR [ USIZE i = 0 | i < (paths.size)[] | i += 1 ]
  |  | @CONST C1 p = ((paths.at)[ i ].cstr)[]
+ |  | ; a link into a mount that does not answer is not looked at
+ |  | IF [ (app_say_down)[ me | p | TRUE ] ]
+ |  |  | held += 1
+ |  |  | CONTINUE
+ |  |  \_
  |  | IF [ (is_archive)[ p ] ]
  |  |  | (me.tasks.push)[ (task_extract)[ p | (me.cwd.cstr)[] ] ]
  |  |  | started += 1
  |  |  \_
  |  \_
- | IF [ started == 0 ]
+ | IF [ started == 0 && held == 0 ]
  |  | (app_note)[ me | "not an archive trufm knows: an extract.<ext> line in the config teaches it" ]
  |  \_
  | (strings_clear)[ @paths ]

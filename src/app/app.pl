@@ -9,6 +9,7 @@ USE <std/os/time.pl>
 USE <modular.pl>
 
 !USES <../core/fs.pl>
+!USES <../core/remote.pl>
 !USES <../core/tasks.pl>
 !USES <../core/trash.pl>
 !USES <../core/config.pl>
@@ -108,6 +109,13 @@ TYPE AppData: STRUCT
 ; not a crash
 Partition partition_of: [ @CONST C1 path ]
  | Partition p
+ | ; a mount over the network that does not answer is not asked
+ | IF [ !((remote_ok)[ path ]) ]
+ |  | p.name = (String.of)[ "?" ]
+ |  | p.usage = 0.0
+ |  | p.free = 0.0
+ |  | RET [ p ]
+ |  \_
  | Option<String> name = (get_phy_part_name)[ path ]
  | IF [ (name.is_some)[] ]
  |  | p.name = (name.unwrap)[]
@@ -188,18 +196,28 @@ ABYSS tab_free: [ @Tab t ]
  | (t.label.deinit)[]
  \_
 
-; to the folder of the open tab, with its row; home if it is gone since
-ABYSS tab_enter: [ @AppData a ]
+; to the folder of the open tab, with its row; home if it is gone since.
+; A folder on a mount that does not answer is not gone: with a tab to stay on
+; (`stay`, its place among the tabs; -1: none) the tab stays what it was and
+; the switch is refused -- FALSE; with none, it goes home, as for a gone one
+B1 tab_enter: [ @AppData a | I32 stay ]
  | @Tab t = (a.tabs.at)[ a.tab AS USIZE ]
+ | ; asked once: the note says which mount, and the answer is the one acted on
+ | B1 down = (app_say_down)[ a | (t.cwd.cstr)[] | TRUE ]
+ | IF [ down && stay >= 0 && (stay AS USIZE) < (a.tabs.size)[] ]
+ |  | a.tab = stay AS U32
+ |  | RET [ FALSE ]
+ |  \_
  | a.listing.restore = t.cursor + 1
  | ; resolved before app_enter frees t.cwd
- | Result<String | IoError> full = (get_realpath)[ (t.cwd.cstr)[] ]
- | IF [ (full.is_err)[] ]
+ | Result<String | IoError> full = (get_realpath)[ SELECT [ down | "/" | (t.cwd.cstr)[] ] ]
+ | IF [ (full.is_err)[] || down ]
  |  | full = (get_realpath)[ ((env)[ "HOME" ].unwrap_or)[ "/" ] ]
  |  \_
  | IF [ (full.is_ok)[] ]
  |  | (app_enter)[ a | (full.unwrap)[] ]
  |  \_
+ | RET [ !down ]
  \_
 
 ABYSS strings_clear: [ @Vector<String> v ]
@@ -213,6 +231,29 @@ ABYSS app_note: [ @AppData a | @CONST C1 s ]
  | (a.note.deinit)[]
  | a.note = (String.of)[ s ]
  | a.note_at = (now_ms)[]
+ \_
+
+; "<mount> is not answering" (down) or "is slow to answer" (not known yet) for
+; the remote mount holding `path`, asked once; FALSE: they answer. `deep`: a
+; link in `path` is followed, by remote_state_deep
+B1 app_say_down: [ @AppData a | @CONST C1 path | B1 deep ]
+ | C1 mount{4096}
+ | I32 state = REMOTE_UP
+ | IF [ deep ]
+ |  | state = (remote_state_deep)[ path | mount | 4096 ]
+ | ELSE
+ |  | state = (remote_state)[ path | mount | 4096 ]
+ |  \_
+ | IF [ state == REMOTE_UP ]
+ |  | RET [ FALSE ]
+ |  \_
+ | String name = (folder_name)[ mount AS @CONST C1 ]
+ | C1 s{300}
+ | BufferSink b = (BufferSink.over)[ s | 300 ]
+ | (b.print)[ SELECT [ state == REMOTE_DOWN | "%s is not answering" | "%s is slow to answer" ] | (name.cstr)[] ]
+ | (name.deinit)[]
+ | (app_note)[ a | s AS @CONST C1 ]
+ | RET [ TRUE ]
  \_
 
 ; the columns read again: what is on the disk changed. Not `all`, as a
@@ -238,17 +279,26 @@ ABYSS app_refresh: [ @AppData a | B1 all ]
 ; elsewhere: up to the nearest one that is still there, and said so.
 ; TRUE: it moved
 B1 app_check_gone: [ @AppData a ]
- | IF [ ((fs_info)[ (a.cwd.cstr)[] ].is_ok)[] ]
+ | ; on a mount that does not answer: out of it, to the folder it is in
+ | ; (one that is not known yet is left be: nothing is called, nothing moves)
+ | C1 mount{4096}
+ | I32 state = (remote_state)[ (a.cwd.cstr)[] | mount | 4096 ]
+ | IF [ state == REMOTE_UNKNOWN ]
  |  | RET [ FALSE ]
  |  \_
- | String up = (get_parent_path)[ (a.cwd.cstr)[] ]
+ | B1 down = state == REMOTE_DOWN
+ | IF [ !down && ((fs_info)[ (a.cwd.cstr)[] ].is_ok)[] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | String up = (get_parent_path)[ SELECT [ down | mount AS @CONST C1 | (a.cwd.cstr)[] ] ]
  | LOOP
- |  | Result<String | IoError> r = (get_realpath)[ (up.cstr)[] ]
- |  | IF [ (r.is_ok)[] ]
- |  |  | String gone = (folder_name)[ (a.cwd.cstr)[] ]
+ |  | B1 asked = (remote_ok)[ (up.cstr)[] ]
+ |  | Result<String | IoError> r = (get_realpath)[ SELECT [ asked | (up.cstr)[] | "/" ] ]
+ |  | IF [ asked && (r.is_ok)[] ]
+ |  |  | String gone = (folder_name)[ SELECT [ down | mount AS @CONST C1 | (a.cwd.cstr)[] ] ]
  |  |  | C1 s{300}
  |  |  | BufferSink b = (BufferSink.over)[ s | 300 ]
- |  |  | (b.print)[ "%s is gone" | (gone.cstr)[] ]
+ |  |  | (b.print)[ SELECT [ down | "%s is not answering" | "%s is gone" ] | (gone.cstr)[] ]
  |  |  | (gone.deinit)[]
  |  |  | (up.deinit)[]
  |  |  | (app_enter)[ a | (r.unwrap)[] ]
@@ -286,11 +336,20 @@ B1 name_ok: [ @CONST C1 name ]
 IFACE AppOps: [ @AppData me ]
  | ; to the folder `path`; FALSE, and nothing changes, when it is not one
  | B1 go_to: [ @CONST C1 path ]
+ |  | ; not into a mount over the network that does not answer
+ |  | IF [ (app_say_down)[ me | path | TRUE ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
  |  | Result<String | IoError> full = (get_realpath)[ path ]
  |  | IF [ (full.is_err)[] ]
  |  |  | RET [ FALSE ]
  |  |  \_
- |  | (app_enter)[ me | (full.unwrap)[] ]
+ |  | String there = (full.unwrap)[]
+ |  | IF [ (app_say_down)[ me | (there.cstr)[] | FALSE ] ]
+ |  |  | (there.deinit)[]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | (app_enter)[ me | there ]
  |  | RET [ TRUE ]
  |  \_
  |
@@ -300,8 +359,9 @@ IFACE AppOps: [ @AppData me ]
  |  |  | RET []
  |  |  \_
  |  | (me.tabs.at)[ me.tab AS USIZE ].cursor = (main_unfiltered_row)[ @(me.listing) ]
+ |  | I32 was = me.tab AS I32
  |  | me.tab = i AS U32
- |  | (tab_enter)[ me ]
+ |  | (tab_enter)[ me | was ]
  |  \_
  |
  | ; a new tab where the open one is, under the lowest free number, opened
@@ -357,7 +417,7 @@ IFACE AppOps: [ @AppData me ]
  |  |  | gone = (me.tabs.size)[] - 1
  |  |  \_
  |  | me.tab = gone AS U32
- |  | (tab_enter)[ me ]
+ |  | (tab_enter)[ me | -1 ]
  |  \_
  |
  | ABYSS dispose: []
@@ -407,8 +467,10 @@ IFACE AppOps: [ @AppData me ]
  |  | (app_enter)[ @s | cwd ]
  |  | ; the config's tabs after the one asked for; one not there is left out
  |  | FOR [ USIZE i = 0 | i < (CFG.tabs.size)[] && (s.tabs.size)[] < MAX_TABS | i += 1 ]
- |  |  | Result<String | IoError> full = (get_realpath)[ ((CFG.tabs.at)[ i ].cstr)[] ]
- |  |  | IF [ (full.is_ok)[] ]
+ |  |  | @CONST C1 want = ((CFG.tabs.at)[ i ].cstr)[]
+ |  |  | B1 up = (remote_ok_deep)[ want ]
+ |  |  | Result<String | IoError> full = (get_realpath)[ SELECT [ up | want | "/" ] ]
+ |  |  | IF [ up && (full.is_ok)[] ]
  |  |  |  | String f = (full.unwrap)[]
  |  |  |  | (s.tabs.push)[ (tab_of)[ (f.cstr)[] | 0 | ((s.tabs.size)[] AS I32) + 1 ] ]
  |  |  |  | (f.deinit)[]

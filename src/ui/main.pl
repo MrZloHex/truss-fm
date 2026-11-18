@@ -287,6 +287,9 @@ ABYSS main_filter: [ @MainPane p | @CONST C1 q ]
 
 ; the folder's time, as it is now
 ABYSS main_seen: [ @MainPane p ]
+ | IF [ !((remote_ok)[ (p.cwd.cstr)[] ]) ]
+ |  | RET []
+ |  \_
  | Result<FileInfo | IoError> r = (fs_info)[ (p.cwd.cstr)[] ]
  | IF [ (r.is_ok)[] ]
  |  | FileInfo i = (r.unwrap)[]
@@ -297,6 +300,10 @@ ABYSS main_seen: [ @MainPane p ]
 
 ; has an entry been made or taken away since the folder was read?
 B1 main_changed: [ @MainPane p ]
+ | ; a mount that does not answer is left to app_check_gone
+ | IF [ !((remote_ok)[ (p.cwd.cstr)[] ]) ]
+ |  | RET [ FALSE ]
+ |  \_
  | Result<FileInfo | IoError> r = (fs_info)[ (p.cwd.cstr)[] ]
  | IF [ (r.is_err)[] ]
  |  | RET [ TRUE ]

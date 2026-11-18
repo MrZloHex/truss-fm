@@ -10,6 +10,7 @@ USE <std/os/os.pl>
 
 USE <modular.pl>
 !USES <../core/fs.pl>
+!USES <../core/remote.pl>
 !USES <../core/trash.pl>
 !USES <look.pl>
 
@@ -81,8 +82,12 @@ FileRecord record_of: [ @CONST C1 dir | @DirEntry e ]
  | r.deleted = 0
  |
  | C1 path{4096}
- | BufferSink b = (BufferSink.over)[ path | 4096 ]
- | (b.print)[ "%s/%s" | dir | e.name AS @CONST C1 ]
+ | (join_into)[ path | 4096 | dir | e.name AS @CONST C1 ]
+ | ; a mount over the network that does not answer is not asked: a folder, unread.
+ | ; A link is followed step by step, as it may lead into one
+ | IF [ !((remote_ok)[ path AS @CONST C1 ]) || (e.kind == FS_LINK && !((remote_ok_deep)[ path AS @CONST C1 ])) ]
+ |  | RET [ r ]
+ |  \_
  | Result<FileInfo | IoError> fi = (fs_info)[ path AS @CONST C1 ]
  | IF [ (fi.is_err)[] ]
  |  | r.broken = e.kind == FS_LINK
@@ -134,6 +139,9 @@ B1 record_before: [ @CONST FileRecord a | @CONST FileRecord b ]
 ; folder cannot be read
 B1 read_folder: [ @Vector<FileRecord> out | @CONST C1 path | B1 hidden | @CONST C1 keep ]
  | (records_clear)[ out ]
+ | IF [ !((remote_ok)[ path ]) ]
+ |  | RET [ FALSE ]
+ |  \_
  | Result<os:Dir | IoError> d = (os:Dir.open)[ path ]
  | IF [ (d.is_err)[] ]
  |  | RET [ FALSE ]

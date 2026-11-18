@@ -89,6 +89,11 @@ I32 main: [ I32 argc | @@C1 argv ]
  | (config_load)[]
  | POSTLUDE (config_free)[]
  | (look_apply)[]
+ | ; a mount over the network that does not answer is not asked: a bad path
+ | IF [ !((remote_ok_deep)[ path ]) ]
+ |  | (stderr.print)[ "trufm: %s: not answering\n" | path ]
+ |  | RET [ 1 ]
+ |  \_
  | Result<String | IoError> cwd = (get_realpath)[ path ]
  | IF [ (cwd.is_err)[] ]
  |  | (stderr.print)[ "trufm: %s: %s\n" | path | (io_error_text)[ (cwd.error)[] ] ]

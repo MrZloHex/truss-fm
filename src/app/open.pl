@@ -132,6 +132,13 @@ ABYSS open_now: [ @AppData me | @Ui ui ]
  | IF [ (me.pending.size)[] == 0 ]
  |  | RET []
  |  \_
+ | ; a link into a mount that does not answer: `file` would hang on it
+ | IF [ (app_say_down)[ me | ((me.pending.at)[ 0 ].cstr)[] | TRUE ] ]
+ |  | (strings_clear)[ @(me.pending) ]
+ |  | me.listing.want_open = FALSE
+ |  | me.preview.want_open = FALSE
+ |  | RET []
+ |  \_
  | @Opener o = (rule_for)[ @(CFG.openers) | ((me.pending.at)[ 0 ].cstr)[] ]
  | IF [ o == NULL ]
  |  | ; a program with nothing to open it: run, asking for its arguments
@@ -173,6 +180,13 @@ ABYSS open_ask: [ @AppData me ]
  | (strings_clear)[ @(me.pending) ]
  | (main_selection)[ @(me.listing) | @(me.pending) ]
  | IF [ (me.pending.size)[] == 0 ]
+ |  | RET []
+ |  \_
+ | ; a link into a mount that does not answer: `file` would hang on it
+ | IF [ (app_say_down)[ me | ((me.pending.at)[ 0 ].cstr)[] | TRUE ] ]
+ |  | (strings_clear)[ @(me.pending) ]
+ |  | me.listing.want_open = FALSE
+ |  | me.preview.want_open = FALSE
  |  | RET []
  |  \_
  | (strings_clear)[ @(me.choices) ]
